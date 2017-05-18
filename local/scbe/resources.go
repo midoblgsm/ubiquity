@@ -2,6 +2,20 @@ package scbe
 
 // go standard for all the structures in the project.
 
+const (
+	DEFAULT_SCBE_PORT          = 8440
+	URL_SCBE_REFERER           = "https://%s:%d/"
+	URL_SCBE_BASE_SUFFIX       = "api/v1"
+	URL_SCBE_RESOURCE_GET_AUTH = "/users/get-auth-token"
+	SCBE_FLOCKER_GROUP_PARAM   = "flocker"
+	UrlScbeResourceService     = "/services"
+	//UrlScbeResourceVolume = "/volumes"
+	//UrlScbeResourceMapping = "/mappings"
+	//UrlScbeResourceHost = "/hosts"
+
+	HTTP_AUTH_KEY = "Authorization"
+)
+
 type LoginResponse struct {
 	Token string `json:"token"`
 }
@@ -26,6 +40,11 @@ type ScbeStorageService struct {
 	HasAdmin                           bool   `json:"has_admin"`
 	QosMaxIops                         int    `json:"qos_max_iops"`
 	QosMaxMbps                         int    `json:"qos_max_mbps"`
+}
+type ScbeVolumeInfo struct {
+	name string
+	wwn  string
+	// TODO later on we will want also size and maybe other stuff
 }
 
 /*

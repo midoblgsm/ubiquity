@@ -42,13 +42,11 @@ func HttpExecute(httpClient *http.Client, logger *log.Logger, requestType string
 		logger.Printf("Internal error marshalling params %#v", err)
 		return nil, fmt.Errorf("Internal error marshalling params")
 	}
-
 	request, err := http.NewRequest(requestType, requestURL, bytes.NewBuffer(payload))
 	if err != nil {
 		logger.Printf("Error in creating request %#v", err)
 		return nil, fmt.Errorf("Error in creating request")
 	}
-
 	return httpClient.Do(request)
 }
 
@@ -90,6 +88,14 @@ func UnmarshalResponse(r *http.Response, object interface{}) error {
 
 	return nil
 }
+
+func VerifyStatusCode(responseStatusCode int, expectedStatusCode int) error {
+	if responseStatusCode != expectedStatusCode {
+		return fmt.Errorf("Error, bad status code of http response")
+	}
+	return nil
+}
+
 func UnmarshalDataFromRequest(r *http.Request, object interface{}) error {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {

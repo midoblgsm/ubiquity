@@ -1,7 +1,7 @@
 package scbe_test
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	fakeScbeQfdn        = "scbe.fake.com"
-	fakeScbeUrlBase     = "https://" + fakeScbeQfdn + ":666"
+	fakeScbeQfdn        = "1.1.1.1"
+	fakeScbeUrlBase     = "https://" + fakeScbeQfdn + ":6666"
+	suffix              = "api/v1"
 	fakeScbeUrlAuth     = "users/get-auth-token"
-	fakeScbeUrlAuthFull = fakeScbeUrlBase + "/" + fakeScbeUrlAuth
+	fakeScbeUrlAuthFull = fakeScbeUrlBase + "/" + suffix + "/" + fakeScbeUrlAuth
 	fakeScbeUrlReferer  = fakeScbeUrlBase + "/"
 )
 
@@ -27,34 +28,31 @@ var _ = Describe("restClient", func() {
 	var (
 		logger  *log.Logger
 		conInfo resources.ConnectionInfo
-		client  scbe.RestClient
+		client  scbe.ScbeRestClient
+		creds   resources.CredentialInfo
 		err     error
 	)
 	BeforeEach(func() {
 		logger = log.New(os.Stdout, "ubiquity scbe: ", log.Lshortfile|log.LstdFlags)
-		conInfo = resources.ConnectionInfo{}
-		client, err = scbe.NewRestClient(logger, conInfo, fakeScbeUrlBase, fakeScbeUrlAuth, fakeScbeUrlReferer)
+		creds = resources.CredentialInfo{UserName: "fake-user", Password: "fake-password"}
+		conInfo = resources.ConnectionInfo{ManagementIP: "1.1.1.1", Port: 6666}
+		client, err = scbe.NewScbeRestClient(logger, conInfo)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Context(".Login", func() {
-		It("should succeed when httpClient succeed and return a token", func() {
-			loginResponse := scbe.LoginResponse{Token: "fake-token"}
-			marshalledResponse, err := json.Marshal(loginResponse)
-			Expect(err).ToNot(HaveOccurred())
+		FIt("should succeed when httpClient succeed and return a token", func() {
+			fmt.Printf("fake .... %s", fakeScbeUrlAuthFull)
 			httpmock.RegisterResponder(
 				"POST",
 				fakeScbeUrlAuthFull,
-				httpmock.NewStringResponder(http.StatusOK, string(marshalledResponse)),
+				httpmock.NewStringResponder(200, ``),
 			)
 			err = client.Login()
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("should fail when httpClient succeed and return an empty token", func() {
-			loginResponse := scbe.LoginResponse{Token: ""}
-			marshalledResponse, err := json.Marshal(loginResponse)
-			Expect(err).ToNot(HaveOccurred())
-			httpmock.RegisterResponder("POST", fakeScbeUrlAuthFull, httpmock.NewStringResponder(http.StatusOK, string(marshalledResponse)))
+			httpmock.RegisterResponder("POST", fakeScbeUrlAuthFull, httpmock.NewStringResponder(http.StatusOK, `{"token":""}`))
 			err = client.Login()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Error, token is empty"))
