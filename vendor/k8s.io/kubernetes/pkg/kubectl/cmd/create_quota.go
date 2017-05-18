@@ -29,15 +29,15 @@ import (
 )
 
 var (
-	quotaLong = templates.LongDesc(`
-		Create a resourcequota with the specified name, hard limits and optional scopes`)
+	quotaLong = templates.LongDesc(i18n.T(`
+		Create a resourcequota with the specified name, hard limits and optional scopes`))
 
-	quotaExample = templates.Examples(`
+	quotaExample = templates.Examples(i18n.T(`
 		# Create a new resourcequota named my-quota
 		kubectl create quota my-quota --hard=cpu=1,memory=1G,pods=2,services=3,replicationcontrollers=2,resourcequotas=1,secrets=5,persistentvolumeclaims=10
 
 		# Create a new resourcequota named best-effort
-		kubectl create quota best-effort --hard=pods=100 --scopes=BestEffort`)
+		kubectl create quota best-effort --hard=pods=100 --scopes=BestEffort`))
 )
 
 // NewCmdCreateQuota is a macro command to create a new quota
@@ -58,8 +58,8 @@ func NewCmdCreateQuota(f cmdutil.Factory, cmdOut io.Writer) *cobra.Command {
 	cmdutil.AddValidateFlags(cmd)
 	cmdutil.AddPrinterFlags(cmd)
 	cmdutil.AddGeneratorFlags(cmd, cmdutil.ResourceQuotaV1GeneratorName)
-	cmd.Flags().String("hard", "", "A comma-delimited set of resource=quantity pairs that define a hard limit.")
-	cmd.Flags().String("scopes", "", "A comma-delimited set of quota scopes that must all match each object tracked by the quota.")
+	cmd.Flags().String("hard", "", i18n.T("A comma-delimited set of resource=quantity pairs that define a hard limit."))
+	cmd.Flags().String("scopes", "", i18n.T("A comma-delimited set of quota scopes that must all match each object tracked by the quota."))
 	return cmd
 }
 

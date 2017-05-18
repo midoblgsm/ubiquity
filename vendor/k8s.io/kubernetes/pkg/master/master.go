@@ -26,6 +26,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -33,7 +34,7 @@ import (
 	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
 	"k8s.io/kubernetes/pkg/api"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	appsapi "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
+	appsv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	authenticationv1 "k8s.io/kubernetes/pkg/apis/authentication/v1"
 	authenticationv1beta1 "k8s.io/kubernetes/pkg/apis/authentication/v1beta1"
 	authorizationapiv1 "k8s.io/kubernetes/pkg/apis/authorization/v1"
@@ -45,6 +46,8 @@ import (
 	policyapiv1beta1 "k8s.io/kubernetes/pkg/apis/policy/v1beta1"
 	rbacapi "k8s.io/kubernetes/pkg/apis/rbac/v1alpha1"
 	rbacv1beta1 "k8s.io/kubernetes/pkg/apis/rbac/v1beta1"
+	settingsapi "k8s.io/kubernetes/pkg/apis/settings/v1alpha1"
+	storageapiv1 "k8s.io/kubernetes/pkg/apis/storage/v1"
 	storageapiv1beta1 "k8s.io/kubernetes/pkg/apis/storage/v1beta1"
 	corev1client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/core/v1"
 	coreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
@@ -68,6 +71,7 @@ import (
 	extensionsrest "k8s.io/kubernetes/pkg/registry/extensions/rest"
 	policyrest "k8s.io/kubernetes/pkg/registry/policy/rest"
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
+	settingsrest "k8s.io/kubernetes/pkg/registry/settings/rest"
 	storagerest "k8s.io/kubernetes/pkg/registry/storage/rest"
 )
 
@@ -79,6 +83,8 @@ const (
 
 type Config struct {
 	GenericConfig *genericapiserver.Config
+
+	ClientCARegistrationHook ClientCARegistrationHook
 
 	APIResourceConfigSource  serverstorage.APIResourceConfigSource
 	StorageFactory           serverstorage.StorageFactory
@@ -135,6 +141,8 @@ type EndpointReconcilerConfig struct {
 // Master contains state for a Kubernetes cluster master/api server.
 type Master struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
+
+	ClientCARegistrationHook ClientCARegistrationHook
 }
 
 type completedConfig struct {
@@ -156,9 +164,9 @@ func (c *Config) Complete() completedConfig {
 		c.APIServerServiceIP = apiServerServiceIP
 	}
 
-	discoveryAddresses := genericapiserver.DefaultDiscoveryAddresses{DefaultAddress: c.GenericConfig.ExternalAddress}
-	discoveryAddresses.DiscoveryCIDRRules = append(discoveryAddresses.DiscoveryCIDRRules,
-		genericapiserver.DiscoveryCIDRRule{IPRange: c.ServiceIPRange, Address: net.JoinHostPort(c.APIServerServiceIP.String(), strconv.Itoa(c.APIServerServicePort))})
+	discoveryAddresses := discovery.DefaultAddresses{DefaultAddress: c.GenericConfig.ExternalAddress}
+	discoveryAddresses.CIDRRules = append(discoveryAddresses.CIDRRules,
+		discovery.CIDRRule{IPRange: c.ServiceIPRange, Address: net.JoinHostPort(c.APIServerServiceIP.String(), strconv.Itoa(c.APIServerServicePort))})
 	c.GenericConfig.DiscoveryAddresses = discoveryAddresses
 
 	if c.ServiceNodePortRange.Size == 0 {
@@ -198,21 +206,21 @@ func (c *Config) SkipComplete() completedConfig {
 // Certain config fields will be set to a default value if unset.
 // Certain config fields must be specified, including:
 //   KubeletClientConfig
-func (c completedConfig) New() (*Master, error) {
+func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget) (*Master, error) {
 	if reflect.DeepEqual(c.KubeletClientConfig, kubeletclient.KubeletClientConfig{}) {
 		return nil, fmt.Errorf("Master.New() called with empty config.KubeletClientConfig")
 	}
 
-	s, err := c.Config.GenericConfig.SkipComplete().New() // completion is done in Complete, no need for a second time
+	s, err := c.Config.GenericConfig.SkipComplete().New(delegationTarget) // completion is done in Complete, no need for a second time
 	if err != nil {
 		return nil, err
 	}
 
 	if c.EnableUISupport {
-		routes.UIRedirect{}.Install(s.HandlerContainer)
+		routes.UIRedirect{}.Install(s.Handler.PostGoRestfulMux)
 	}
 	if c.EnableLogsSupport {
-		routes.Logs{}.Install(s.HandlerContainer)
+		routes.Logs{}.Install(s.Handler.GoRestfulContainer)
 	}
 
 	m := &Master{
@@ -233,22 +241,32 @@ func (c completedConfig) New() (*Master, error) {
 		m.InstallLegacyAPI(c.Config, c.Config.GenericConfig.RESTOptionsGetter, legacyRESTStorageProvider)
 	}
 
+	// The order here is preserved in discovery.
+	// If resources with identical names exist in more than one of these groups (e.g. "deployments.apps"" and "deployments.extensions"),
+	// the order of this list determines which group an unqualified resource name (e.g. "deployments") should prefer.
 	restStorageProviders := []RESTStorageProvider{
-		appsrest.RESTStorageProvider{},
 		authenticationrest.RESTStorageProvider{Authenticator: c.GenericConfig.Authenticator},
 		authorizationrest.RESTStorageProvider{Authorizer: c.GenericConfig.Authorizer},
 		autoscalingrest.RESTStorageProvider{},
 		batchrest.RESTStorageProvider{},
 		certificatesrest.RESTStorageProvider{},
-		extensionsrest.RESTStorageProvider{ResourceInterface: thirdparty.NewThirdPartyResourceServer(s, c.StorageFactory)},
+		extensionsrest.RESTStorageProvider{ResourceInterface: thirdparty.NewThirdPartyResourceServer(s, s.DiscoveryGroupManager, c.StorageFactory)},
 		policyrest.RESTStorageProvider{},
 		rbacrest.RESTStorageProvider{Authorizer: c.GenericConfig.Authorizer},
+		settingsrest.RESTStorageProvider{},
 		storagerest.RESTStorageProvider{},
+		// keep apps after extensions so legacy clients resolve the extensions versions of shared resource names.
+		// See https://github.com/kubernetes/kubernetes/issues/42392
+		appsrest.RESTStorageProvider{},
 	}
 	m.InstallAPIs(c.Config.APIResourceConfigSource, c.Config.GenericConfig.RESTOptionsGetter, restStorageProviders...)
 
 	if c.Tunneler != nil {
 		m.installTunneler(c.Tunneler, corev1client.NewForConfigOrDie(c.GenericConfig.LoopbackClientConfig).Nodes())
+	}
+
+	if err := m.GenericAPIServer.AddPostStartHook("ca-registration", c.ClientCARegistrationHook.PostStartHook); err != nil {
+		glog.Fatalf("Error registering PostStartHook %q: %v", "ca-registration", err)
 	}
 
 	return m, nil
@@ -332,7 +350,6 @@ type nodeAddressProvider struct {
 func (n nodeAddressProvider) externalAddresses() ([]string, error) {
 	preferredAddressTypes := []apiv1.NodeAddressType{
 		apiv1.NodeExternalIP,
-		apiv1.NodeLegacyHostIP,
 	}
 	nodes, err := n.nodeClient.List(metav1.ListOptions{})
 	if err != nil {
@@ -359,10 +376,12 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 		authenticationv1.SchemeGroupVersion,
 		authenticationv1beta1.SchemeGroupVersion,
 		autoscalingapiv1.SchemeGroupVersion,
-		appsapi.SchemeGroupVersion,
+		appsv1beta1.SchemeGroupVersion,
 		policyapiv1beta1.SchemeGroupVersion,
 		rbacv1beta1.SchemeGroupVersion,
 		rbacapi.SchemeGroupVersion,
+		settingsapi.SchemeGroupVersion,
+		storageapiv1.SchemeGroupVersion,
 		storageapiv1beta1.SchemeGroupVersion,
 		certificatesapiv1beta1.SchemeGroupVersion,
 		authorizationapiv1.SchemeGroupVersion,

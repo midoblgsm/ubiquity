@@ -1,7 +1,6 @@
 package scbe
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net/http"
@@ -36,7 +35,7 @@ type scbeRestClient struct {
 	headers        map[string]string
 }
 
-func NewScbeRestClient(logger *log.Logger, conInfo resources.ConnectionInfo) (ScbeRestClient, error) {
+func NewScbeRestClient(logger *log.Logger, conInfo resources.ConnectionInfo, transport *http.Transport) (ScbeRestClient, error) {
 	// Set default SCBE port if not mentioned
 	if conInfo.Port == 0 {
 		conInfo.Port = DEFAULT_SCBE_PORT
@@ -50,10 +49,14 @@ func NewScbeRestClient(logger *log.Logger, conInfo resources.ConnectionInfo) (Sc
 		"Content-Type": "application/json",
 		"referer":      referrer,
 	}
-	transCfg := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates TODO to use
+
+	var client *http.Client
+
+	if transport != nil {
+		client = &http.Client{Transport: transport}
+	} else {
+		client = &http.Client{}
 	}
-	client := &http.Client{Transport: transCfg}
 
 	return &scbeRestClient{logger: logger,
 		baseURL:        baseURL,
@@ -69,10 +72,6 @@ func (s *scbeRestClient) Login() error {
 	if err != nil {
 		s.logger.Printf("Error in getting token %#v", err)
 		return err
-	}
-	if token == "" {
-		s.logger.Printf("Error, token is empty")
-		return fmt.Errorf("Error, token is empty")
 	}
 	s.headers[HTTP_AUTH_KEY] = "Token " + token
 
@@ -145,20 +144,13 @@ func (s *scbeRestClient) getToken() (string, error) {
 
 	url := fmt.Sprintf("%s%s", s.baseURL, s.authURL)
 
-	fmt.Printf("url*%s* \n", url)
 	// response, err := utils.HttpExecute(s.httpClient, s.logger, "POST", url, s.connectionInfo.CredentialInfo)
-	response, err := utils.HttpExecute(s.httpClient, s.logger, "POST", url, nil) //, s.connectionInfo.CredentialInfo)
+	response, err := utils.HttpExecute(s.httpClient, s.logger, "POST", url, s.connectionInfo.CredentialInfo)
 	if err != nil {
 		s.logger.Printf("failed executing http request %#v", err)
 		return "", fmt.Errorf("failed executing http request %#v", err)
 	}
-	fmt.Printf("response ... %#v ", response)
 	err = utils.VerifyStatusCode(response.StatusCode, http.StatusOK)
-	if err != nil {
-		return "", err
-	}
-	var services []ScbeStorageService
-	err = utils.UnmarshalResponse(response, services)
 	if err != nil {
 		return "", err
 	}
@@ -166,7 +158,7 @@ func (s *scbeRestClient) getToken() (string, error) {
 	var loginResponse = LoginResponse{}
 	err = utils.UnmarshalResponse(response, &loginResponse)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Error in unmarshalling response")
 	}
 
 	if loginResponse.Token == "" {

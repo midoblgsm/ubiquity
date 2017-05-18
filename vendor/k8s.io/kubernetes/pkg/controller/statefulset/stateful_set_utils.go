@@ -21,8 +21,9 @@ import (
 	"regexp"
 	"strconv"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/api/v1"
-	podapi "k8s.io/kubernetes/pkg/api/v1/pod"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	apps "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -38,7 +39,7 @@ var updateConflictError = fmt.Errorf("aborting update after %d attempts", maxUpd
 
 // overlappingStatefulSets sorts a list of StatefulSets by creation timestamp, using their names as a tie breaker.
 // Generally used to tie break between StatefulSets that have overlapping selectors.
-type overlappingStatefulSets []apps.StatefulSet
+type overlappingStatefulSets []*apps.StatefulSet
 
 func (o overlappingStatefulSets) Len() int { return len(o) }
 
@@ -55,8 +56,8 @@ func (o overlappingStatefulSets) Less(i, j int) bool {
 var statefulPodRegex = regexp.MustCompile("(.*)-([0-9]+)$")
 
 // getParentNameAndOrdinal gets the name of pod's parent StatefulSet and pod's ordinal as extracted from its Name. If
-// the Pod was not created by a StatefulSet, its parent is considered to be nil, and its ordinal is considered to be
-// -1.
+// the Pod was not created by a StatefulSet, its parent is considered to be empty string, and its ordinal is considered
+// to be -1.
 func getParentNameAndOrdinal(pod *v1.Pod) (string, int) {
 	parent := ""
 	ordinal := -1
@@ -88,9 +89,10 @@ func getPodName(set *apps.StatefulSet, ordinal int) string {
 	return fmt.Sprintf("%s-%d", set.Name, ordinal)
 }
 
-// getPersistentVolumeClaimName getsthe name of PersistentVolumeClaim for a Pod with an ordinal index of ordinal. claim
+// getPersistentVolumeClaimName gets the name of PersistentVolumeClaim for a Pod with an ordinal index of ordinal. claim
 // must be a PersistentVolumeClaim from set's VolumeClaims template.
 func getPersistentVolumeClaimName(set *apps.StatefulSet, claim *v1.PersistentVolumeClaim, ordinal int) string {
+	// NOTE: This name format is used by the heuristics for zone spreading in ChooseZoneForVolume
 	return fmt.Sprintf("%s-%s-%d", claim.Name, set.Name, ordinal)
 }
 
@@ -106,9 +108,8 @@ func identityMatches(set *apps.StatefulSet, pod *v1.Pod) bool {
 		set.Name == parent &&
 		pod.Name == getPodName(set, ordinal) &&
 		pod.Namespace == set.Namespace &&
-		pod.Annotations != nil &&
-		pod.Annotations[podapi.PodHostnameAnnotation] == pod.Name &&
-		pod.Annotations[podapi.PodSubdomainAnnotation] == set.Spec.ServiceName
+		pod.Spec.Hostname == pod.Name &&
+		pod.Spec.Subdomain == set.Spec.ServiceName
 }
 
 // storageMatches returns true if pod's Volumes cover the set of PersistentVolumeClaims
@@ -180,11 +181,8 @@ func updateStorage(set *apps.StatefulSet, pod *v1.Pod) {
 func updateIdentity(set *apps.StatefulSet, pod *v1.Pod) {
 	pod.Name = getPodName(set, getOrdinal(pod))
 	pod.Namespace = set.Namespace
-	if pod.Annotations == nil {
-		pod.Annotations = make(map[string]string)
-	}
-	pod.Annotations[podapi.PodHostnameAnnotation] = pod.Name
-	pod.Annotations[podapi.PodSubdomainAnnotation] = set.Spec.ServiceName
+	pod.Spec.Hostname = pod.Name
+	pod.Spec.Subdomain = set.Spec.ServiceName
 }
 
 // isRunningAndReady returns true if pod is in the PodRunning Phase, if it has a condition of PodReady, and if the init
@@ -193,7 +191,7 @@ func isRunningAndReady(pod *v1.Pod) bool {
 	if pod.Status.Phase != v1.PodRunning {
 		return false
 	}
-	podReady := v1.IsPodReady(pod)
+	podReady := podutil.IsPodReady(pod)
 	// User may have specified a pod readiness override through a debug annotation.
 	initialized, ok := pod.Annotations[apps.StatefulSetInitAnnotation]
 	if ok {
@@ -219,19 +217,33 @@ func isFailed(pod *v1.Pod) bool {
 	return pod.Status.Phase == v1.PodFailed
 }
 
-// isTerminated returns true if pod's deletion Timestamp has been set
-func isTerminated(pod *v1.Pod) bool {
+// isTerminating returns true if pod's DeletionTimestamp has been set
+func isTerminating(pod *v1.Pod) bool {
 	return pod.DeletionTimestamp != nil
 }
 
 // isHealthy returns true if pod is running and ready and has not been terminated
 func isHealthy(pod *v1.Pod) bool {
-	return isRunningAndReady(pod) && !isTerminated(pod)
+	return isRunningAndReady(pod) && !isTerminating(pod)
+}
+
+// newControllerRef returns an ControllerRef pointing to a given StatefulSet.
+func newControllerRef(set *apps.StatefulSet) *metav1.OwnerReference {
+	blockOwnerDeletion := true
+	isController := true
+	return &metav1.OwnerReference{
+		APIVersion:         controllerKind.GroupVersion().String(),
+		Kind:               controllerKind.Kind,
+		Name:               set.Name,
+		UID:                set.UID,
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller:         &isController,
+	}
 }
 
 // newStatefulSetPod returns a new Pod conforming to the set's Spec with an identity generated from ordinal.
 func newStatefulSetPod(set *apps.StatefulSet, ordinal int) *v1.Pod {
-	pod, _ := controller.GetPodFromTemplate(&set.Spec.Template, set, nil)
+	pod, _ := controller.GetPodFromTemplate(&set.Spec.Template, set, newControllerRef(set))
 	pod.Name = getPodName(set, ordinal)
 	updateIdentity(set, pod)
 	updateStorage(set, pod)

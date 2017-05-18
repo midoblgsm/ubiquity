@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright 2015 The Kubernetes Authors.
 #
@@ -26,6 +26,9 @@ from tempfile import TemporaryDirectory
 import re
 import os
 import sys
+
+
+os.environ['PATH'] += os.pathsep + os.path.join(os.sep, 'snap', 'bin')
 
 
 def main():

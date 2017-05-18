@@ -5,11 +5,11 @@ import (
 	"log"
 	"os"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"github.com/IBM/ubiquity/fakes"
 	"github.com/IBM/ubiquity/local/spectrumscale/connectors"
 	"github.com/IBM/ubiquity/resources"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("spectrum_mmcli", func() {

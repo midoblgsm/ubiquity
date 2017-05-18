@@ -25,12 +25,14 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/client/legacylisters"
+	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
+	corelisters "k8s.io/kubernetes/pkg/client/listers/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 	priorityutil "k8s.io/kubernetes/plugin/pkg/scheduler/algorithm/priorities/util"
@@ -58,13 +60,22 @@ type PersistentVolumeInfo interface {
 	GetPersistentVolumeInfo(pvID string) (*v1.PersistentVolume, error)
 }
 
+// CachedPersistentVolumeInfo implements PersistentVolumeInfo
+type CachedPersistentVolumeInfo struct {
+	corelisters.PersistentVolumeLister
+}
+
+func (c *CachedPersistentVolumeInfo) GetPersistentVolumeInfo(pvID string) (*v1.PersistentVolume, error) {
+	return c.Get(pvID)
+}
+
 type PersistentVolumeClaimInfo interface {
 	GetPersistentVolumeClaimInfo(namespace string, name string) (*v1.PersistentVolumeClaim, error)
 }
 
 // CachedPersistentVolumeClaimInfo implements PersistentVolumeClaimInfo
 type CachedPersistentVolumeClaimInfo struct {
-	*listers.StoreToPersistentVolumeClaimLister
+	corelisters.PersistentVolumeClaimLister
 }
 
 // GetPersistentVolumeClaimInfo fetches the claim in specified namespace with specified name
@@ -73,22 +84,22 @@ func (c *CachedPersistentVolumeClaimInfo) GetPersistentVolumeClaimInfo(namespace
 }
 
 type CachedNodeInfo struct {
-	*listers.StoreToNodeLister
+	corelisters.NodeLister
 }
 
 // GetNodeInfo returns cached data for the node 'id'.
 func (c *CachedNodeInfo) GetNodeInfo(id string) (*v1.Node, error) {
-	node, exists, err := c.Get(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: id}})
+	node, err := c.Get(id)
+
+	if apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf("node '%v' not found", id)
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving node '%v' from cache: %v", id, err)
 	}
 
-	if !exists {
-		return nil, fmt.Errorf("node '%v' not found", id)
-	}
-
-	return node.(*v1.Node), nil
+	return node, nil
 }
 
 //  Note that predicateMetadata and matchingPodAntiAffinityTerm need to be declared in the same file
@@ -241,7 +252,7 @@ func (c *MaxPDVolumeCountChecker) filterVolumes(volumes []v1.Volume, namespace s
 			if err != nil {
 				// if the PV is not found, log the error
 				// and count the PV towards the PV limit
-				// generate a random volume ID since its required for de-dup
+				// generate a random volume ID since it is required for de-dup
 				utilruntime.HandleError(fmt.Errorf("Unable to look up PV info for %s/%s/%s, assuming PV matches predicate when counting limits: %v", namespace, pvcName, pvName, err))
 				source := rand.NewSource(time.Now().UnixNano())
 				generatedID := "missingPV" + strconv.Itoa(rand.New(source).Intn(1000000))
@@ -458,6 +469,30 @@ func (c *VolumeZoneChecker) predicate(pod *v1.Pod, meta interface{}, nodeInfo *s
 	return true, nil, nil
 }
 
+// Returns a *schedulercache.Resource that covers the largest width in each
+// resource dimension. Because init-containers run sequentially, we collect the
+// max in each dimension iteratively. In contrast, we sum the resource vectors
+// for regular containers since they run simultaneously.
+//
+// Example:
+//
+// Pod:
+//   InitContainers
+//     IC1:
+//       CPU: 2
+//       Memory: 1G
+//     IC2:
+//       CPU: 2
+//       Memory: 3G
+//   Containers
+//     C1:
+//       CPU: 2
+//       Memory: 1G
+//     C2:
+//       CPU: 1
+//       Memory: 1G
+//
+// Result: CPU: 3, Memory: 3G
 func GetResourceRequest(pod *v1.Pod) *schedulercache.Resource {
 	result := schedulercache.Resource{}
 	for _, container := range pod.Spec.Containers {
@@ -470,7 +505,7 @@ func GetResourceRequest(pod *v1.Pod) *schedulercache.Resource {
 			case v1.ResourceNvidiaGPU:
 				result.NvidiaGPU += rQuantity.Value()
 			default:
-				if v1.IsOpaqueIntResourceName(rName) {
+				if v1helper.IsOpaqueIntResourceName(rName) {
 					result.AddOpaque(rName, rQuantity.Value())
 				}
 			}
@@ -493,12 +528,10 @@ func GetResourceRequest(pod *v1.Pod) *schedulercache.Resource {
 					result.NvidiaGPU = gpu
 				}
 			default:
-				if v1.IsOpaqueIntResourceName(rName) {
+				if v1helper.IsOpaqueIntResourceName(rName) {
 					value := rQuantity.Value()
-					// Ensure the opaque resource map is initialized in the result.
-					result.AddOpaque(rName, int64(0))
 					if value > result.OpaqueIntResources[rName] {
-						result.OpaqueIntResources[rName] = value
+						result.SetOpaque(rName, value)
 					}
 				}
 			}
@@ -563,7 +596,7 @@ func PodFitsResources(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.No
 // terms are ORed, and an empty list of terms will match nothing.
 func nodeMatchesNodeSelectorTerms(node *v1.Node, nodeSelectorTerms []v1.NodeSelectorTerm) bool {
 	for _, req := range nodeSelectorTerms {
-		nodeSelector, err := v1.NodeSelectorRequirementsAsSelector(req.MatchExpressions)
+		nodeSelector, err := v1helper.NodeSelectorRequirementsAsSelector(req.MatchExpressions)
 		if err != nil {
 			glog.V(10).Infof("Failed to parse MatchExpressions: %+v, regarding as not match.", req.MatchExpressions)
 			return false
@@ -804,8 +837,7 @@ func PodFitsHostPorts(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.No
 		return true, nil, nil
 	}
 
-	// TODO: Aggregate it at the NodeInfo level.
-	existingPorts := GetUsedPorts(nodeInfo.Pods()...)
+	existingPorts := nodeInfo.UsedPorts()
 	for wport := range wantPorts {
 		if wport != 0 && existingPorts[wport] {
 			return false, []algorithm.PredicateFailureReason{ErrPodNotFitsHostPorts}, nil
@@ -846,6 +878,28 @@ func haveSame(a1, a2 []string) bool {
 
 func GeneralPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
 	var predicateFails []algorithm.PredicateFailureReason
+	fit, reasons, err := noncriticalPredicates(pod, meta, nodeInfo)
+	if err != nil {
+		return false, predicateFails, err
+	}
+	if !fit {
+		predicateFails = append(predicateFails, reasons...)
+	}
+
+	fit, reasons, err = EssentialPredicates(pod, meta, nodeInfo)
+	if err != nil {
+		return false, predicateFails, err
+	}
+	if !fit {
+		predicateFails = append(predicateFails, reasons...)
+	}
+
+	return len(predicateFails) == 0, predicateFails, nil
+}
+
+// noncriticalPredicates are the predicates that only non-critical pods need
+func noncriticalPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
+	var predicateFails []algorithm.PredicateFailureReason
 	fit, reasons, err := PodFitsResources(pod, meta, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
@@ -854,7 +908,13 @@ func GeneralPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.N
 		predicateFails = append(predicateFails, reasons...)
 	}
 
-	fit, reasons, err = PodFitsHost(pod, meta, nodeInfo)
+	return len(predicateFails) == 0, predicateFails, nil
+}
+
+// EssentialPredicates are the predicates that all pods, including critical pods, need
+func EssentialPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
+	var predicateFails []algorithm.PredicateFailureReason
+	fit, reasons, err := PodFitsHost(pod, meta, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
 	}
@@ -862,6 +922,8 @@ func GeneralPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.N
 		predicateFails = append(predicateFails, reasons...)
 	}
 
+	// TODO: PodFitsHostPorts is essential for now, but kubelet should ideally
+	//       preempt pods to free up host ports too
 	fit, reasons, err = PodFitsHostPorts(pod, meta, nodeInfo)
 	if err != nil {
 		return false, predicateFails, err
@@ -877,7 +939,6 @@ func GeneralPredicates(pod *v1.Pod, meta interface{}, nodeInfo *schedulercache.N
 	if !fit {
 		predicateFails = append(predicateFails, reasons...)
 	}
-
 	return len(predicateFails) == 0, predicateFails, nil
 }
 
@@ -1013,14 +1074,13 @@ func getMatchingAntiAffinityTerms(pod *v1.Pod, nodeInfoMap map[string]*scheduler
 				continue
 			}
 			for _, term := range getPodAntiAffinityTerms(affinity.PodAntiAffinity) {
-				namespaces := priorityutil.GetNamespacesFromPodAffinityTerm(pod, &term)
+				namespaces := priorityutil.GetNamespacesFromPodAffinityTerm(existingPod, &term)
 				selector, err := metav1.LabelSelectorAsSelector(term.LabelSelector)
 				if err != nil {
 					catchError(err)
 					return
 				}
-				match := priorityutil.PodMatchesTermsNamespaceAndSelector(pod, namespaces, selector)
-				if match {
+				if priorityutil.PodMatchesTermsNamespaceAndSelector(pod, namespaces, selector) {
 					nodeResult = append(nodeResult, matchingPodAntiAffinityTerm{term: &term, node: node})
 				}
 			}
@@ -1048,8 +1108,7 @@ func (c *PodAffinityChecker) getMatchingAntiAffinityTerms(pod *v1.Pod, allPods [
 				if err != nil {
 					return nil, err
 				}
-				match := priorityutil.PodMatchesTermsNamespaceAndSelector(pod, namespaces, selector)
-				if match {
+				if priorityutil.PodMatchesTermsNamespaceAndSelector(pod, namespaces, selector) {
 					result = append(result, matchingPodAntiAffinityTerm{term: &term, node: existingPodNode})
 				}
 			}
@@ -1067,17 +1126,17 @@ func (c *PodAffinityChecker) satisfiesExistingPodsAntiAffinity(pod *v1.Pod, meta
 	} else {
 		allPods, err := c.podLister.List(labels.Everything())
 		if err != nil {
-			glog.V(10).Infof("Failed to get all pods, %+v", err)
+			glog.Errorf("Failed to get all pods, %+v", err)
 			return false
 		}
 		if matchingTerms, err = c.getMatchingAntiAffinityTerms(pod, allPods); err != nil {
-			glog.V(10).Infof("Failed to get all terms that pod %+v matches, err: %+v", podName(pod), err)
+			glog.Errorf("Failed to get all terms that pod %+v matches, err: %+v", podName(pod), err)
 			return false
 		}
 	}
 	for _, term := range matchingTerms {
 		if len(term.term.TopologyKey) == 0 {
-			glog.V(10).Infof("Empty topologyKey is not allowed except for PreferredDuringScheduling pod anti-affinity")
+			glog.Error("Empty topologyKey is not allowed except for PreferredDuringScheduling pod anti-affinity")
 			return false
 		}
 		if priorityutil.NodesHaveSameTopologyKey(node, term.node, term.term.TopologyKey) {
@@ -1106,7 +1165,7 @@ func (c *PodAffinityChecker) satisfiesPodsAffinityAntiAffinity(pod *v1.Pod, node
 	for _, term := range getPodAffinityTerms(affinity.PodAffinity) {
 		termMatches, matchingPodExists, err := c.anyPodMatchesPodAffinityTerm(pod, allPods, node, &term)
 		if err != nil {
-			glog.V(10).Infof("Cannot schedule pod %+v onto node %v,because of PodAffinityTerm %v, err: %v",
+			glog.Errorf("Cannot schedule pod %+v onto node %v,because of PodAffinityTerm %v, err: %v",
 				podName(pod), node.Name, term, err)
 			return false
 		}
@@ -1122,7 +1181,7 @@ func (c *PodAffinityChecker) satisfiesPodsAffinityAntiAffinity(pod *v1.Pod, node
 			namespaces := priorityutil.GetNamespacesFromPodAffinityTerm(pod, &term)
 			selector, err := metav1.LabelSelectorAsSelector(term.LabelSelector)
 			if err != nil {
-				glog.V(10).Infof("Cannot parse selector on term %v for pod %v. Details %v",
+				glog.Errorf("Cannot parse selector on term %v for pod %v. Details %v",
 					term, podName(pod), err)
 				return false
 			}
@@ -1160,12 +1219,7 @@ func PodToleratesNodeTaints(pod *v1.Pod, meta interface{}, nodeInfo *schedulerca
 		return false, nil, err
 	}
 
-	tolerations, err := v1.GetTolerationsFromPodAnnotations(pod.Annotations)
-	if err != nil {
-		return false, nil, err
-	}
-
-	if v1.TolerationsTolerateTaintsWithFilter(tolerations, taints, func(t *v1.Taint) bool {
+	if v1helper.TolerationsTolerateTaintsWithFilter(pod.Spec.Tolerations, taints, func(t *v1.Taint) bool {
 		// PodToleratesNodeTaints is only interested in NoSchedule and NoExecute taints.
 		return t.Effect == v1.TaintEffectNoSchedule || t.Effect == v1.TaintEffectNoExecute
 	}) {

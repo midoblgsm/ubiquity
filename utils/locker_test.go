@@ -7,9 +7,9 @@ import (
 
 	"fmt"
 
+	"github.com/IBM/ubiquity/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/IBM/ubiquity/utils"
 )
 
 var _ = Describe("utils - locker", func() {

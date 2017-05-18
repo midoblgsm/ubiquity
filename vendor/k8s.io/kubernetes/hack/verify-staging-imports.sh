@@ -41,10 +41,23 @@ function print_forbidden_imports () {
     )
     if [ -n "${FORBIDDEN}" ]; then
         echo "${PACKAGE} has a forbidden dependency:"
-		echo
-		echo "${FORBIDDEN}" | sed 's/^/  /'
-		echo
-		return 1
+        echo
+        echo "${FORBIDDEN}" | sed 's/^/  /'
+        echo
+        return 1
+    fi
+    local TEST_FORBIDDEN=$(
+        go list -f $'{{with $package := .ImportPath}}{{range $.TestImports}}{{$package}} imports {{.}}\n{{end}}{{end}}' ./vendor/k8s.io/${PACKAGE}/... |
+        sed 's|^k8s.io/kubernetes/vendor/||;s| k8s.io/kubernetes/vendor/| |' |
+        grep -v " k8s.io/${PACKAGE}" |
+        grep -e "imports \(${RE}\)"
+    )
+    if [ -n "${TEST_FORBIDDEN}" ]; then
+        echo "${PACKAGE} has a forbidden dependency in test code:"
+        echo
+        echo "${TEST_FORBIDDEN}" | sed 's/^/  /'
+        echo
+        return 1
     fi
     return 0
 }
@@ -63,5 +76,13 @@ if grep -rq '// import "k8s.io/kubernetes/' 'staging/'; then
 	echo 'file has "// import "k8s.io/kubernetes/"'
 	exit 1
 fi
+
+for EXAMPLE in vendor/k8s.io/client-go/examples/{in-cluster,out-of-cluster,third-party-resources}; do
+	test -d "${EXAMPLE}" # make sure example is still there
+	if go list -f '{{ join .Deps "\n" }}' "./${EXAMPLE}/..." | sort | uniq | grep -q k8s.io/client-go/plugin; then
+		echo "${EXAMPLE} imports client-go plugins by default, but shouldn't."
+		exit 1
+	fi
+done
 
 exit 0

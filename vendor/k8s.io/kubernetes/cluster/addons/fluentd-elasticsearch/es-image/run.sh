@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
-# Copyright 2015 The Kubernetes Authors.
+# Copyright 2017 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,4 +25,4 @@ export MINIMUM_MASTER_NODES=${MINIMUM_MASTER_NODES:-2}
 
 chown -R elasticsearch:elasticsearch /data
 
-/bin/su -c /elasticsearch/bin/elasticsearch elasticsearch
+exec gosu elasticsearch /elasticsearch/bin/elasticsearch

@@ -17,7 +17,6 @@ limitations under the License.
 package master
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -32,6 +31,7 @@ import (
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	"k8s.io/kubernetes/cmd/kubeadm/app/images"
+	"k8s.io/kubernetes/pkg/util/version"
 )
 
 var (
@@ -41,7 +41,7 @@ var (
 )
 
 func CreateSelfHostedControlPlane(cfg *kubeadmapi.MasterConfiguration, client *clientset.Clientset) error {
-	volumes := []v1.Volume{k8sVolume(cfg)}
+	volumes := []v1.Volume{k8sVolume()}
 	volumeMounts := []v1.VolumeMount{k8sVolumeMount()}
 	if isCertsVolumeMountNeeded() {
 		volumes = append(volumes, certsVolume(cfg))
@@ -49,7 +49,7 @@ func CreateSelfHostedControlPlane(cfg *kubeadmapi.MasterConfiguration, client *c
 	}
 
 	if isPkiVolumeMountNeeded() {
-		volumes = append(volumes, pkiVolume(cfg))
+		volumes = append(volumes, pkiVolume())
 		volumeMounts = append(volumeMounts, pkiVolumeMount())
 	}
 
@@ -75,7 +75,11 @@ func CreateSelfHostedControlPlane(cfg *kubeadmapi.MasterConfiguration, client *c
 func launchSelfHostedAPIServer(cfg *kubeadmapi.MasterConfiguration, client *clientset.Clientset, volumes []v1.Volume, volumeMounts []v1.VolumeMount) error {
 	start := time.Now()
 
-	apiServer := getAPIServerDS(cfg, volumes, volumeMounts)
+	kubeVersion, err := version.ParseSemantic(cfg.KubernetesVersion)
+	if err != nil {
+		return err
+	}
+	apiServer := getAPIServerDS(cfg, volumes, volumeMounts, kubeVersion)
 	if _, err := client.Extensions().DaemonSets(metav1.NamespaceSystem).Create(&apiServer); err != nil {
 		return fmt.Errorf("failed to create self-hosted %q daemon set [%v]", kubeAPIServer, err)
 	}
@@ -139,7 +143,7 @@ func launchSelfHostedControllerManager(cfg *kubeadmapi.MasterConfiguration, clie
 
 func launchSelfHostedScheduler(cfg *kubeadmapi.MasterConfiguration, client *clientset.Clientset, volumes []v1.Volume, volumeMounts []v1.VolumeMount) error {
 	start := time.Now()
-	scheduler := getSchedulerDeployment(cfg)
+	scheduler := getSchedulerDeployment(cfg, volumes, volumeMounts)
 	if _, err := client.Extensions().Deployments(metav1.NamespaceSystem).Create(&scheduler); err != nil {
 		return fmt.Errorf("failed to create self-hosted %q deployment [%v]", kubeScheduler, err)
 	}
@@ -184,7 +188,7 @@ func waitForPodsWithLabel(client *clientset.Clientset, appLabel string, mustBeRu
 }
 
 // Sources from bootkube templates.go
-func getAPIServerDS(cfg *kubeadmapi.MasterConfiguration, volumes []v1.Volume, volumeMounts []v1.VolumeMount) ext.DaemonSet {
+func getAPIServerDS(cfg *kubeadmapi.MasterConfiguration, volumes []v1.Volume, volumeMounts []v1.VolumeMount, kubeVersion *version.Version) ext.DaemonSet {
 	ds := ext.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "extensions/v1beta1",
@@ -203,25 +207,24 @@ func getAPIServerDS(cfg *kubeadmapi.MasterConfiguration, volumes []v1.Volume, vo
 						"component": kubeAPIServer,
 						"tier":      "control-plane",
 					},
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: getMasterToleration(),
-					},
 				},
 				Spec: v1.PodSpec{
-					NodeSelector: map[string]string{metav1.NodeLabelKubeadmAlphaRole: metav1.NodeLabelRoleMaster},
+					NodeSelector: map[string]string{kubeadmconstants.LabelNodeRoleMaster: ""},
 					HostNetwork:  true,
 					Volumes:      volumes,
 					Containers: []v1.Container{
 						{
 							Name:          "self-hosted-" + kubeAPIServer,
 							Image:         images.GetCoreImage(images.KubeAPIServerImage, cfg, kubeadmapi.GlobalEnvParams.HyperkubeImage),
-							Command:       getAPIServerCommand(cfg, true),
+							Command:       getAPIServerCommand(cfg, true, kubeVersion),
 							Env:           getSelfHostedAPIServerEnv(),
 							VolumeMounts:  volumeMounts,
-							LivenessProbe: componentProbe(8080, "/healthz"),
+							LivenessProbe: componentProbe(6443, "/healthz", v1.URISchemeHTTPS),
 							Resources:     componentResources("250m"),
 						},
 					},
+					Tolerations: []v1.Toleration{kubeadmconstants.MasterToleration},
+					DNSPolicy:   v1.DNSClusterFirstWithHostNet,
 				},
 			},
 		},
@@ -256,12 +259,9 @@ func getControllerManagerDeployment(cfg *kubeadmapi.MasterConfiguration, volumes
 						"component": kubeControllerManager,
 						"tier":      "control-plane",
 					},
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: getMasterToleration(),
-					},
 				},
 				Spec: v1.PodSpec{
-					NodeSelector: map[string]string{metav1.NodeLabelKubeadmAlphaRole: metav1.NodeLabelRoleMaster},
+					NodeSelector: map[string]string{kubeadmconstants.LabelNodeRoleMaster: ""},
 					HostNetwork:  true,
 					Volumes:      volumes,
 					Containers: []v1.Container{
@@ -270,12 +270,13 @@ func getControllerManagerDeployment(cfg *kubeadmapi.MasterConfiguration, volumes
 							Image:         images.GetCoreImage(images.KubeControllerManagerImage, cfg, kubeadmapi.GlobalEnvParams.HyperkubeImage),
 							Command:       getControllerManagerCommand(cfg, true),
 							VolumeMounts:  volumeMounts,
-							LivenessProbe: componentProbe(10252, "/healthz"),
+							LivenessProbe: componentProbe(10252, "/healthz", v1.URISchemeHTTP),
 							Resources:     componentResources("200m"),
 							Env:           getProxyEnvVars(),
 						},
 					},
-					DNSPolicy: v1.DNSDefault,
+					Tolerations: []v1.Toleration{kubeadmconstants.MasterToleration},
+					DNSPolicy:   v1.DNSClusterFirstWithHostNet,
 				},
 			},
 		},
@@ -283,7 +284,7 @@ func getControllerManagerDeployment(cfg *kubeadmapi.MasterConfiguration, volumes
 	return d
 }
 
-func getSchedulerDeployment(cfg *kubeadmapi.MasterConfiguration) ext.Deployment {
+func getSchedulerDeployment(cfg *kubeadmapi.MasterConfiguration, volumes []v1.Volume, volumeMounts []v1.VolumeMount) ext.Deployment {
 	d := ext.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "extensions/v1beta1",
@@ -310,43 +311,32 @@ func getSchedulerDeployment(cfg *kubeadmapi.MasterConfiguration) ext.Deployment 
 						"component": kubeScheduler,
 						"tier":      "control-plane",
 					},
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: getMasterToleration(),
-					},
 				},
 				Spec: v1.PodSpec{
-					NodeSelector: map[string]string{metav1.NodeLabelKubeadmAlphaRole: metav1.NodeLabelRoleMaster},
+					NodeSelector: map[string]string{kubeadmconstants.LabelNodeRoleMaster: ""},
 					HostNetwork:  true,
+					Volumes:      volumes,
 					Containers: []v1.Container{
 						{
 							Name:          "self-hosted-" + kubeScheduler,
 							Image:         images.GetCoreImage(images.KubeSchedulerImage, cfg, kubeadmapi.GlobalEnvParams.HyperkubeImage),
 							Command:       getSchedulerCommand(cfg, true),
-							LivenessProbe: componentProbe(10251, "/healthz"),
+							VolumeMounts:  volumeMounts,
+							LivenessProbe: componentProbe(10251, "/healthz", v1.URISchemeHTTP),
 							Resources:     componentResources("100m"),
 							Env:           getProxyEnvVars(),
 						},
 					},
+					Tolerations: []v1.Toleration{kubeadmconstants.MasterToleration},
+					DNSPolicy:   v1.DNSClusterFirstWithHostNet,
 				},
 			},
 		},
 	}
+
 	return d
 }
 
 func buildStaticManifestFilepath(name string) string {
 	return path.Join(kubeadmapi.GlobalEnvParams.KubernetesDir, "manifests", name+".yaml")
-}
-
-func getMasterToleration() string {
-	// Tolerate the master taint we add to our master nodes, as this can and should
-	// run there.
-	// TODO: Duplicated above
-	masterToleration, _ := json.Marshal([]v1.Toleration{{
-		Key:      "dedicated",
-		Value:    "master",
-		Operator: v1.TolerationOpEqual,
-		Effect:   v1.TaintEffectNoSchedule,
-	}})
-	return string(masterToleration)
 }

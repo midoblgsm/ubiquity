@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	core "k8s.io/client-go/testing"
@@ -37,38 +36,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseFederationReplicaSetReference(t *testing.T) {
-	successPrefs := []string{
-		`{"rebalance": true,
-		  "clusters": {
-		    "k8s-1": {"minReplicas": 10, "maxReplicas": 20, "weight": 2},
-		    "*": {"weight": 1}
-		}}`,
-	}
-	failedPrefes := []string{
-		`{`, // bad json
-	}
-
-	rs := newReplicaSetWithReplicas("rs-1", 100)
-	accessor, _ := meta.Accessor(rs)
-	anno := accessor.GetAnnotations()
-	if anno == nil {
-		anno = make(map[string]string)
-		accessor.SetAnnotations(anno)
-	}
-	for _, prefString := range successPrefs {
-		anno[FedReplicaSetPreferencesAnnotation] = prefString
-		pref, err := parseFederationReplicaSetReference(rs)
-		assert.NotNil(t, pref)
-		assert.Nil(t, err)
-	}
-	for _, prefString := range failedPrefes {
-		anno[FedReplicaSetPreferencesAnnotation] = prefString
-		pref, err := parseFederationReplicaSetReference(rs)
-		assert.Nil(t, pref)
-		assert.NotNil(t, err)
-	}
-}
+const (
+	pods        = "pods"
+	replicasets = "replicasets"
+	k8s1        = "k8s-1"
+	k8s2        = "k8s-2"
+)
 
 func TestReplicaSetController(t *testing.T) {
 	flag.Set("logtostderr", "true")
@@ -82,27 +55,27 @@ func TestReplicaSetController(t *testing.T) {
 
 	fedclientset := fedclientfake.NewSimpleClientset()
 	fedrswatch := watch.NewFake()
-	fedclientset.PrependWatchReactor("replicasets", core.DefaultWatchReactor(fedrswatch, nil))
+	fedclientset.PrependWatchReactor(replicasets, core.DefaultWatchReactor(fedrswatch, nil))
 
-	fedclientset.Federation().Clusters().Create(testutil.NewCluster("k8s-1", apiv1.ConditionTrue))
-	fedclientset.Federation().Clusters().Create(testutil.NewCluster("k8s-2", apiv1.ConditionTrue))
+	fedclientset.Federation().Clusters().Create(testutil.NewCluster(k8s1, apiv1.ConditionTrue))
+	fedclientset.Federation().Clusters().Create(testutil.NewCluster(k8s2, apiv1.ConditionTrue))
 
 	kube1clientset := kubeclientfake.NewSimpleClientset()
 	kube1rswatch := watch.NewFake()
-	kube1clientset.PrependWatchReactor("replicasets", core.DefaultWatchReactor(kube1rswatch, nil))
+	kube1clientset.PrependWatchReactor(replicasets, core.DefaultWatchReactor(kube1rswatch, nil))
 	kube1Podwatch := watch.NewFake()
-	kube1clientset.PrependWatchReactor("pods", core.DefaultWatchReactor(kube1Podwatch, nil))
+	kube1clientset.PrependWatchReactor(pods, core.DefaultWatchReactor(kube1Podwatch, nil))
 	kube2clientset := kubeclientfake.NewSimpleClientset()
 	kube2rswatch := watch.NewFake()
-	kube2clientset.PrependWatchReactor("replicasets", core.DefaultWatchReactor(kube2rswatch, nil))
+	kube2clientset.PrependWatchReactor(replicasets, core.DefaultWatchReactor(kube2rswatch, nil))
 	kube2Podwatch := watch.NewFake()
-	kube2clientset.PrependWatchReactor("pods", core.DefaultWatchReactor(kube2Podwatch, nil))
+	kube2clientset.PrependWatchReactor(pods, core.DefaultWatchReactor(kube2Podwatch, nil))
 
 	fedInformerClientFactory := func(cluster *fedv1.Cluster) (kubeclientset.Interface, error) {
 		switch cluster.Name {
-		case "k8s-1":
+		case k8s1:
 			return kube1clientset, nil
-		case "k8s-2":
+		case k8s2:
 			return kube2clientset, nil
 		default:
 			return nil, fmt.Errorf("Unknown cluster: %v", cluster.Name)

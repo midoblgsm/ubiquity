@@ -68,9 +68,10 @@ type VolumePlugin interface {
 	// depend on this.
 	Init(host VolumeHost) error
 
-	// Name returns the plugin's name.  Plugins should use namespaced names
-	// such as "example.com/volume".  The "kubernetes.io" namespace is
-	// reserved for plugins which are bundled with kubernetes.
+	// Name returns the plugin's name.  Plugins must use namespaced names
+	// such as "example.com/volume" and contain exactly one '/' character.
+	// The "kubernetes.io" namespace is reserved for plugins which are
+	// bundled with kubernetes.
 	GetPluginName() string
 
 	// GetVolumeName returns the name/ID to uniquely identifying the actual
@@ -107,6 +108,16 @@ type VolumePlugin interface {
 	// information from input. This function is used by volume manager to reconstruct
 	// volume spec by reading the volume directories from disk
 	ConstructVolumeSpec(volumeName, mountPath string) (*Spec, error)
+
+	// SupportsMountOption returns true if volume plugins supports Mount options
+	// Specifying mount options in a volume plugin that doesn't support
+	// user specified mount options will result in error creating persistent volumes
+	SupportsMountOption() bool
+
+	// SupportsBulkVolumeVerification checks if volume plugin type is capable
+	// of enabling bulk polling of all nodes. This can speed up verification of
+	// attached volumes by quite a bit, but underlying pluging must support it.
+	SupportsBulkVolumeVerification() bool
 }
 
 // PersistentVolumePlugin is an extended interface of VolumePlugin and is used

@@ -37,6 +37,12 @@ import (
 	fakekubeclientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	namespaces string = "namespaces"
+	clusters   string = "clusters"
 )
 
 func TestNamespaceController(t *testing.T) {
@@ -53,24 +59,24 @@ func TestNamespaceController(t *testing.T) {
 	}
 
 	fakeClient := &fakefedclientset.Clientset{}
-	RegisterFakeList("clusters", &fakeClient.Fake, &federationapi.ClusterList{Items: []federationapi.Cluster{*cluster1}})
-	RegisterFakeList("namespaces", &fakeClient.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
-	namespaceWatch := RegisterFakeWatch("namespaces", &fakeClient.Fake)
-	namespaceCreateChan := RegisterFakeCopyOnCreate("namespaces", &fakeClient.Fake, namespaceWatch)
-	clusterWatch := RegisterFakeWatch("clusters", &fakeClient.Fake)
+	RegisterFakeList(clusters, &fakeClient.Fake, &federationapi.ClusterList{Items: []federationapi.Cluster{*cluster1}})
+	RegisterFakeList(namespaces, &fakeClient.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
+	namespaceWatch := RegisterFakeWatch(namespaces, &fakeClient.Fake)
+	namespaceUpdateChan := RegisterFakeCopyOnUpdate(namespaces, &fakeClient.Fake, namespaceWatch)
+	clusterWatch := RegisterFakeWatch(clusters, &fakeClient.Fake)
 
 	cluster1Client := &fakekubeclientset.Clientset{}
-	cluster1Watch := RegisterFakeWatch("namespaces", &cluster1Client.Fake)
-	RegisterFakeList("namespaces", &cluster1Client.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
-	cluster1CreateChan := RegisterFakeCopyOnCreate("namespaces", &cluster1Client.Fake, cluster1Watch)
-	cluster1UpdateChan := RegisterFakeCopyOnUpdate("namespaces", &cluster1Client.Fake, cluster1Watch)
+	cluster1Watch := RegisterFakeWatch(namespaces, &cluster1Client.Fake)
+	RegisterFakeList(namespaces, &cluster1Client.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
+	cluster1CreateChan := RegisterFakeCopyOnCreate(namespaces, &cluster1Client.Fake, cluster1Watch)
+	cluster1UpdateChan := RegisterFakeCopyOnUpdate(namespaces, &cluster1Client.Fake, cluster1Watch)
 
 	cluster2Client := &fakekubeclientset.Clientset{}
-	cluster2Watch := RegisterFakeWatch("namespaces", &cluster2Client.Fake)
-	RegisterFakeList("namespaces", &cluster2Client.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
-	cluster2CreateChan := RegisterFakeCopyOnCreate("namespaces", &cluster2Client.Fake, cluster2Watch)
+	cluster2Watch := RegisterFakeWatch(namespaces, &cluster2Client.Fake)
+	RegisterFakeList(namespaces, &cluster2Client.Fake, &apiv1.NamespaceList{Items: []apiv1.Namespace{}})
+	cluster2CreateChan := RegisterFakeCopyOnCreate(namespaces, &cluster2Client.Fake, cluster2Watch)
 
-	nsDeleteChan := RegisterDelete(&fakeClient.Fake, "namespaces")
+	nsDeleteChan := RegisterDelete(&fakeClient.Fake, namespaces)
 	namespaceController := NewNamespaceController(fakeClient, dynamic.NewDynamicClientPool(&restclient.Config{}))
 	informerClientFactory := func(cluster *federationapi.Cluster) (kubeclientset.Interface, error) {
 		switch cluster.Name {
@@ -94,15 +100,14 @@ func TestNamespaceController(t *testing.T) {
 	// Test add federated namespace.
 	namespaceWatch.Add(&ns1)
 	// Verify that the DeleteFromUnderlyingClusters finalizer is added to the namespace.
-	// Note: finalize invokes the create action in Fake client.
-	// TODO: Seems like a bug. Should invoke update. Fix it.
-	updatedNamespace := GetNamespaceFromChan(namespaceCreateChan)
-	assert.True(t, namespaceController.hasFinalizerFunc(updatedNamespace, deletionhelper.FinalizerDeleteFromUnderlyingClusters))
+	updatedNamespace := GetNamespaceFromChan(namespaceUpdateChan)
+	require.NotNil(t, updatedNamespace)
+	AssertHasFinalizer(t, updatedNamespace, deletionhelper.FinalizerDeleteFromUnderlyingClusters)
 	ns1 = *updatedNamespace
 
 	// Verify that the namespace is created in underlying cluster1.
 	createdNamespace := GetNamespaceFromChan(cluster1CreateChan)
-	assert.NotNil(t, createdNamespace)
+	require.NotNil(t, createdNamespace)
 	assert.Equal(t, ns1.Name, createdNamespace.Name)
 
 	// Wait for the namespace to appear in the informer store
@@ -121,14 +126,14 @@ func TestNamespaceController(t *testing.T) {
 	// Test add cluster
 	clusterWatch.Add(cluster2)
 	createdNamespace2 := GetNamespaceFromChan(cluster2CreateChan)
-	assert.NotNil(t, createdNamespace2)
+	require.NotNil(t, createdNamespace2)
 	assert.Equal(t, ns1.Name, createdNamespace2.Name)
 	assert.Contains(t, createdNamespace2.Annotations, "A")
 
 	// Delete the namespace with orphan finalizer (let namespaces
 	// in underlying clusters be as is).
 	// TODO: Add a test without orphan finalizer.
-	ns1.ObjectMeta.Finalizers = append(ns1.ObjectMeta.Finalizers, metav1.FinalizerOrphan)
+	ns1.ObjectMeta.Finalizers = append(ns1.ObjectMeta.Finalizers, metav1.FinalizerOrphanDependents)
 	ns1.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 	namespaceWatch.Modify(&ns1)
 	assert.Equal(t, ns1.Name, GetStringFromChan(nsDeleteChan))
@@ -175,7 +180,9 @@ func GetStringFromChan(c chan string) string {
 }
 
 func GetNamespaceFromChan(c chan runtime.Object) *apiv1.Namespace {
-	namespace := GetObjectFromChan(c).(*apiv1.Namespace)
-	return namespace
-
+	if namespace := GetObjectFromChan(c); namespace == nil {
+		return nil
+	} else {
+		return namespace.(*apiv1.Namespace)
+	}
 }

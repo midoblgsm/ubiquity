@@ -29,8 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/kubernetes/pkg/api/v1"
-	podapi "k8s.io/kubernetes/pkg/api/v1/pod"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	apps "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
+	"k8s.io/kubernetes/pkg/controller"
 )
 
 func TestGetParentNameAndOrdinal(t *testing.T) {
@@ -78,12 +79,12 @@ func TestIdentityMatches(t *testing.T) {
 		t.Error("identity matches for a Pod with the wrong namespace")
 	}
 	pod = newStatefulSetPod(set, 1)
-	delete(pod.Annotations, podapi.PodHostnameAnnotation)
+	pod.Spec.Hostname = ""
 	if identityMatches(set, pod) {
 		t.Error("identity matches for a Pod with no hostname")
 	}
 	pod = newStatefulSetPod(set, 1)
-	delete(pod.Annotations, podapi.PodSubdomainAnnotation)
+	pod.Spec.Subdomain = ""
 	if identityMatches(set, pod) {
 		t.Error("identity matches for a Pod with no subdomain")
 	}
@@ -137,7 +138,7 @@ func TestUpdateIdentity(t *testing.T) {
 		t.Error("updateIdentity failed to update the Pods namespace")
 	}
 	pod = newStatefulSetPod(set, 1)
-	delete(pod.Annotations, podapi.PodHostnameAnnotation)
+	pod.Spec.Hostname = ""
 	if identityMatches(set, pod) {
 		t.Error("identity matches for a Pod with no hostname")
 	}
@@ -146,22 +147,13 @@ func TestUpdateIdentity(t *testing.T) {
 		t.Error("updateIdentity failed to update the Pod's hostname")
 	}
 	pod = newStatefulSetPod(set, 1)
-	delete(pod.Annotations, podapi.PodSubdomainAnnotation)
+	pod.Spec.Subdomain = ""
 	if identityMatches(set, pod) {
 		t.Error("identity matches for a Pod with no subdomain")
 	}
 	updateIdentity(set, pod)
 	if !identityMatches(set, pod) {
 		t.Error("updateIdentity failed to update the Pod's subdomain")
-	}
-	pod = newStatefulSetPod(set, 1)
-	pod.Annotations = nil
-	if identityMatches(set, pod) {
-		t.Error("identity matches for a Pod no annotations")
-	}
-	updateIdentity(set, pod)
-	if !identityMatches(set, pod) {
-		t.Error("updateIdentity failed to update the Pod's annotations")
 	}
 }
 
@@ -216,7 +208,7 @@ func TestIsRunningAndReady(t *testing.T) {
 		t.Error("isRunningAndReady does not respect Pod condition")
 	}
 	condition := v1.PodCondition{Type: v1.PodReady, Status: v1.ConditionTrue}
-	v1.UpdatePodCondition(&pod.Status, &condition)
+	podutil.UpdatePodCondition(&pod.Status, &condition)
 	if !isRunningAndReady(pod) {
 		t.Error("Pod should be running and ready")
 	}
@@ -251,10 +243,10 @@ func TestAscendingOrdinal(t *testing.T) {
 }
 
 func TestOverlappingStatefulSets(t *testing.T) {
-	sets := make([]apps.StatefulSet, 10)
+	sets := make([]*apps.StatefulSet, 10)
 	perm := rand.Perm(10)
 	for i, v := range perm {
-		sets[i] = *newStatefulSet(10)
+		sets[i] = newStatefulSet(10)
 		sets[i].CreationTimestamp = metav1.NewTime(sets[i].CreationTimestamp.Add(time.Duration(v) * time.Second))
 	}
 	sort.Sort(overlappingStatefulSets(sets))
@@ -262,12 +254,36 @@ func TestOverlappingStatefulSets(t *testing.T) {
 		t.Error("ascendingOrdinal fails to sort Pods")
 	}
 	for i, v := range perm {
-		sets[i] = *newStatefulSet(10)
+		sets[i] = newStatefulSet(10)
 		sets[i].Name = strconv.FormatInt(int64(v), 10)
 	}
 	sort.Sort(overlappingStatefulSets(sets))
 	if !sort.IsSorted(overlappingStatefulSets(sets)) {
 		t.Error("ascendingOrdinal fails to sort Pods")
+	}
+}
+
+func TestNewPodControllerRef(t *testing.T) {
+	set := newStatefulSet(1)
+	pod := newStatefulSetPod(set, 0)
+	controllerRef := controller.GetControllerOf(pod)
+	if controllerRef == nil {
+		t.Fatalf("No ControllerRef found on new pod")
+	}
+	if got, want := controllerRef.APIVersion, apps.SchemeGroupVersion.String(); got != want {
+		t.Errorf("controllerRef.APIVersion = %q, want %q", got, want)
+	}
+	if got, want := controllerRef.Kind, "StatefulSet"; got != want {
+		t.Errorf("controllerRef.Kind = %q, want %q", got, want)
+	}
+	if got, want := controllerRef.Name, set.Name; got != want {
+		t.Errorf("controllerRef.Name = %q, want %q", got, want)
+	}
+	if got, want := controllerRef.UID, set.UID; got != want {
+		t.Errorf("controllerRef.UID = %q, want %q", got, want)
+	}
+	if got, want := *controllerRef.Controller, true; got != want {
+		t.Errorf("controllerRef.Controller = %v, want %v", got, want)
 	}
 }
 

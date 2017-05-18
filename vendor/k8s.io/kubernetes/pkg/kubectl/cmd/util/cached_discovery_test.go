@@ -22,7 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emicklei/go-restful/swagger"
+	"github.com/emicklei/go-restful-swagger12"
+	"github.com/go-openapi/spec"
 	"github.com/stretchr/testify/assert"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -101,6 +102,7 @@ type fakeDiscoveryClient struct {
 	resourceCalls int
 	versionCalls  int
 	swaggerCalls  int
+	openAPICalls  int
 
 	serverResourcesHandler func() ([]*metav1.APIResourceList, error)
 }
@@ -135,7 +137,7 @@ func (c *fakeDiscoveryClient) ServerGroups() (*metav1.APIGroupList, error) {
 func (c *fakeDiscoveryClient) ServerResourcesForGroupVersion(groupVersion string) (*metav1.APIResourceList, error) {
 	c.resourceCalls = c.resourceCalls + 1
 	if groupVersion == "a/v1" {
-		return &metav1.APIResourceList{}, nil
+		return &metav1.APIResourceList{APIResources: []metav1.APIResource{{Name: "widgets", Kind: "Widget"}}}, nil
 	}
 
 	return nil, errors.NewNotFound(schema.GroupResource{}, "")
@@ -167,4 +169,9 @@ func (c *fakeDiscoveryClient) ServerVersion() (*version.Info, error) {
 func (c *fakeDiscoveryClient) SwaggerSchema(version schema.GroupVersion) (*swagger.ApiDeclaration, error) {
 	c.swaggerCalls = c.swaggerCalls + 1
 	return &swagger.ApiDeclaration{}, nil
+}
+
+func (c *fakeDiscoveryClient) OpenAPISchema() (*spec.Swagger, error) {
+	c.openAPICalls = c.openAPICalls + 1
+	return &spec.Swagger{}, nil
 }

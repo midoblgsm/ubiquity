@@ -1,7 +1,7 @@
 package scbe_test
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -12,11 +12,12 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega" // including the whole package inside the file
 	// httpmock is the referrer for this module
-	"gopkg.in/jarcoal/httpmock.v1"
+	//"gopkg.in/jarcoal/httpmock.v1"
+	"github.com/jarcoal/httpmock"
 )
 
 const (
-	fakeScbeQfdn        = "1.1.1.1"
+	fakeScbeQfdn        = "fake.com"
 	fakeScbeUrlBase     = "https://" + fakeScbeQfdn + ":6666"
 	suffix              = "api/v1"
 	fakeScbeUrlAuth     = "users/get-auth-token"
@@ -35,18 +36,21 @@ var _ = Describe("restClient", func() {
 	BeforeEach(func() {
 		logger = log.New(os.Stdout, "ubiquity scbe: ", log.Lshortfile|log.LstdFlags)
 		creds = resources.CredentialInfo{UserName: "fake-user", Password: "fake-password"}
-		conInfo = resources.ConnectionInfo{ManagementIP: "1.1.1.1", Port: 6666}
-		client, err = scbe.NewScbeRestClient(logger, conInfo)
+		conInfo = resources.ConnectionInfo{ManagementIP: "fake.com", Port: 6666}
+		client, err = scbe.NewScbeRestClient(logger, conInfo, nil)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Context(".Login", func() {
-		FIt("should succeed when httpClient succeed and return a token", func() {
-			fmt.Printf("fake .... %s", fakeScbeUrlAuthFull)
+		It("should succeed when httpClient succeed and return a token", func() {
+			loginResponse := scbe.LoginResponse{Token: "fake-token"}
+			marshalledResponse, err := json.Marshal(loginResponse)
+			Expect(err).ToNot(HaveOccurred())
+
 			httpmock.RegisterResponder(
 				"POST",
 				fakeScbeUrlAuthFull,
-				httpmock.NewStringResponder(200, ``),
+				httpmock.NewStringResponder(200, string(marshalledResponse)),
 			)
 			err = client.Login()
 			Expect(err).ToNot(HaveOccurred())
@@ -55,7 +59,7 @@ var _ = Describe("restClient", func() {
 			httpmock.RegisterResponder("POST", fakeScbeUrlAuthFull, httpmock.NewStringResponder(http.StatusOK, `{"token":""}`))
 			err = client.Login()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("Error, token is empty"))
+			Expect(err.Error()).To(Equal("Token is empty"))
 		})
 		It("should fail when httpClient fails to login due to bad status of response", func() {
 			httpmock.RegisterResponder("POST", fakeScbeUrlAuthFull, httpmock.NewStringResponder(http.StatusBadRequest, "{}"))

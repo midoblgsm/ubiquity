@@ -83,6 +83,8 @@ func TestDefaulting(t *testing.T) {
 		{Group: "apps", Version: "v1beta1", Kind: "StatefulSetList"}:                              {},
 		{Group: "autoscaling", Version: "v1", Kind: "HorizontalPodAutoscaler"}:                    {},
 		{Group: "autoscaling", Version: "v1", Kind: "HorizontalPodAutoscalerList"}:                {},
+		{Group: "autoscaling", Version: "v2alpha1", Kind: "HorizontalPodAutoscaler"}:              {},
+		{Group: "autoscaling", Version: "v2alpha1", Kind: "HorizontalPodAutoscalerList"}:          {},
 		{Group: "batch", Version: "v1", Kind: "Job"}:                                              {},
 		{Group: "batch", Version: "v1", Kind: "JobList"}:                                          {},
 		{Group: "batch", Version: "v2alpha1", Kind: "CronJob"}:                                    {},
@@ -105,6 +107,8 @@ func TestDefaulting(t *testing.T) {
 		{Group: "extensions", Version: "v1beta1", Kind: "DaemonSetList"}:                          {},
 		{Group: "extensions", Version: "v1beta1", Kind: "Deployment"}:                             {},
 		{Group: "extensions", Version: "v1beta1", Kind: "DeploymentList"}:                         {},
+		{Group: "apps", Version: "v1beta1", Kind: "Deployment"}:                                   {},
+		{Group: "apps", Version: "v1beta1", Kind: "DeploymentList"}:                               {},
 		{Group: "extensions", Version: "v1beta1", Kind: "ReplicaSet"}:                             {},
 		{Group: "extensions", Version: "v1beta1", Kind: "ReplicaSetList"}:                         {},
 		{Group: "rbac.authorization.k8s.io", Version: "v1alpha1", Kind: "ClusterRoleBinding"}:     {},
@@ -115,6 +119,8 @@ func TestDefaulting(t *testing.T) {
 		{Group: "rbac.authorization.k8s.io", Version: "v1beta1", Kind: "ClusterRoleBindingList"}:  {},
 		{Group: "rbac.authorization.k8s.io", Version: "v1beta1", Kind: "RoleBinding"}:             {},
 		{Group: "rbac.authorization.k8s.io", Version: "v1beta1", Kind: "RoleBindingList"}:         {},
+		{Group: "settings.k8s.io", Version: "v1alpha1", Kind: "PodPreset"}:                        {},
+		{Group: "settings.k8s.io", Version: "v1alpha1", Kind: "PodPresetList"}:                    {},
 	}
 
 	f := fuzz.New().NilChance(.5).NumElements(1, 1).RandSource(rand.NewSource(1))

@@ -42,12 +42,11 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/api/v1"
-	storage "k8s.io/kubernetes/pkg/apis/storage/v1beta1"
-	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1beta1/util"
+	storage "k8s.io/kubernetes/pkg/apis/storage/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/externalversions"
-	storagelisters "k8s.io/kubernetes/pkg/client/listers/storage/v1beta1"
+	storagelisters "k8s.io/kubernetes/pkg/client/listers/storage/v1"
 	"k8s.io/kubernetes/pkg/controller"
 	vol "k8s.io/kubernetes/pkg/volume"
 )
@@ -167,7 +166,7 @@ func (r *volumeReactor) React(action core.Action) (handled bool, ret runtime.Obj
 		return true, nil, err
 	}
 
-	// Test did not requst to inject an error, continue simulating API server.
+	// Test did not request to inject an error, continue simulating API server.
 	switch {
 	case action.Matches("create", "persistentvolumes"):
 		obj := action.(core.UpdateAction).GetObject()
@@ -597,7 +596,7 @@ func newVolumeReactor(client *fake.Clientset, ctrl *PersistentVolumeController, 
 }
 func alwaysReady() bool { return true }
 
-func newTestController(kubeClient clientset.Interface, informerFactory informers.SharedInformerFactory, enableDynamicProvisioning bool) *PersistentVolumeController {
+func newTestController(kubeClient clientset.Interface, informerFactory informers.SharedInformerFactory, enableDynamicProvisioning bool) (*PersistentVolumeController, error) {
 	if informerFactory == nil {
 		informerFactory = informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
 	}
@@ -607,21 +606,24 @@ func newTestController(kubeClient clientset.Interface, informerFactory informers
 		VolumePlugins:             []vol.VolumePlugin{},
 		VolumeInformer:            informerFactory.Core().V1().PersistentVolumes(),
 		ClaimInformer:             informerFactory.Core().V1().PersistentVolumeClaims(),
-		ClassInformer:             informerFactory.Storage().V1beta1().StorageClasses(),
+		ClassInformer:             informerFactory.Storage().V1().StorageClasses(),
 		EventRecorder:             record.NewFakeRecorder(1000),
 		EnableDynamicProvisioning: enableDynamicProvisioning,
 	}
-	ctrl := NewController(params)
+	ctrl, err := NewController(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct persistentvolume controller: %v", err)
+	}
 	ctrl.volumeListerSynced = alwaysReady
 	ctrl.claimListerSynced = alwaysReady
 	ctrl.classListerSynced = alwaysReady
 	// Speed up the test
 	ctrl.createProvisionedPVInterval = 5 * time.Millisecond
-	return ctrl
+	return ctrl, nil
 }
 
 // newVolume returns a new volume with given attributes
-func newVolume(name, capacity, boundToClaimUID, boundToClaimName string, phase v1.PersistentVolumePhase, reclaimPolicy v1.PersistentVolumeReclaimPolicy, annotations ...string) *v1.PersistentVolume {
+func newVolume(name, capacity, boundToClaimUID, boundToClaimName string, phase v1.PersistentVolumePhase, reclaimPolicy v1.PersistentVolumeReclaimPolicy, class string, annotations ...string) *v1.PersistentVolume {
 	volume := v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -636,6 +638,7 @@ func newVolume(name, capacity, boundToClaimUID, boundToClaimName string, phase v
 			},
 			AccessModes:                   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce, v1.ReadOnlyMany},
 			PersistentVolumeReclaimPolicy: reclaimPolicy,
+			StorageClassName:              class,
 		},
 		Status: v1.PersistentVolumeStatus{
 			Phase: phase,
@@ -658,8 +661,6 @@ func newVolume(name, capacity, boundToClaimUID, boundToClaimName string, phase v
 			switch a {
 			case annDynamicallyProvisioned:
 				volume.Annotations[a] = mockPluginName
-			case storageutil.StorageClassAnnotation:
-				volume.Annotations[a] = "gold"
 			default:
 				volume.Annotations[a] = "yes"
 			}
@@ -707,27 +708,16 @@ func withMessage(message string, volumes []*v1.PersistentVolume) []*v1.Persisten
 	return volumes
 }
 
-// volumeWithClass saves given class into storage.StorageClassAnnotation annotation.
-// Meant to be used to compose claims specified inline in a test.
-func volumeWithClass(className string, volumes []*v1.PersistentVolume) []*v1.PersistentVolume {
-	if volumes[0].Annotations == nil {
-		volumes[0].Annotations = map[string]string{storageutil.StorageClassAnnotation: className}
-	} else {
-		volumes[0].Annotations[storageutil.StorageClassAnnotation] = className
-	}
-	return volumes
-}
-
 // newVolumeArray returns array with a single volume that would be returned by
 // newVolume() with the same parameters.
-func newVolumeArray(name, capacity, boundToClaimUID, boundToClaimName string, phase v1.PersistentVolumePhase, reclaimPolicy v1.PersistentVolumeReclaimPolicy, annotations ...string) []*v1.PersistentVolume {
+func newVolumeArray(name, capacity, boundToClaimUID, boundToClaimName string, phase v1.PersistentVolumePhase, reclaimPolicy v1.PersistentVolumeReclaimPolicy, class string, annotations ...string) []*v1.PersistentVolume {
 	return []*v1.PersistentVolume{
-		newVolume(name, capacity, boundToClaimUID, boundToClaimName, phase, reclaimPolicy, annotations...),
+		newVolume(name, capacity, boundToClaimUID, boundToClaimName, phase, reclaimPolicy, class, annotations...),
 	}
 }
 
 // newClaim returns a new claim with given attributes
-func newClaim(name, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, annotations ...string) *v1.PersistentVolumeClaim {
+func newClaim(name, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string, annotations ...string) *v1.PersistentVolumeClaim {
 	claim := v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -742,21 +732,20 @@ func newClaim(name, claimUID, capacity, boundToVolume string, phase v1.Persisten
 					v1.ResourceName(v1.ResourceStorage): resource.MustParse(capacity),
 				},
 			},
-			VolumeName: boundToVolume,
+			VolumeName:       boundToVolume,
+			StorageClassName: class,
 		},
 		Status: v1.PersistentVolumeClaimStatus{
 			Phase: phase,
 		},
 	}
-	// Make sure v1.GetReference(claim) works
+	// Make sure ref.GetReference(claim) works
 	claim.ObjectMeta.SelfLink = testapi.Default.SelfLink("pvc", name)
 
 	if len(annotations) > 0 {
 		claim.Annotations = make(map[string]string)
 		for _, a := range annotations {
 			switch a {
-			case storageutil.StorageClassAnnotation:
-				claim.Annotations[a] = "gold"
 			case annStorageProvisioner:
 				claim.Annotations[a] = mockPluginName
 			default:
@@ -778,21 +767,10 @@ func newClaim(name, claimUID, capacity, boundToVolume string, phase v1.Persisten
 
 // newClaimArray returns array with a single claim that would be returned by
 // newClaim() with the same parameters.
-func newClaimArray(name, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, annotations ...string) []*v1.PersistentVolumeClaim {
+func newClaimArray(name, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string, annotations ...string) []*v1.PersistentVolumeClaim {
 	return []*v1.PersistentVolumeClaim{
-		newClaim(name, claimUID, capacity, boundToVolume, phase, annotations...),
+		newClaim(name, claimUID, capacity, boundToVolume, phase, class, annotations...),
 	}
-}
-
-// claimWithClass saves given class into storage.StorageClassAnnotation annotation.
-// Meant to be used to compose claims specified inline in a test.
-func claimWithClass(className string, claims []*v1.PersistentVolumeClaim) []*v1.PersistentVolumeClaim {
-	if claims[0].Annotations == nil {
-		claims[0].Annotations = map[string]string{storageutil.StorageClassAnnotation: className}
-	} else {
-		claims[0].Annotations[storageutil.StorageClassAnnotation] = className
-	}
-	return claims
 }
 
 // claimWithAnnotation saves given annotation into given claims.
@@ -828,6 +806,15 @@ type operationType string
 const operationDelete = "Delete"
 const operationRecycle = "Recycle"
 
+var (
+	classGold            string = "gold"
+	classSilver          string = "silver"
+	classEmpty           string = ""
+	classNonExisting     string = "non-existing"
+	classExternal        string = "external"
+	classUnknownInternal string = "unknown-internal"
+)
+
 // wrapTestWithPluginCalls returns a testCall that:
 // - configures controller with a volume plugin that implements recycler,
 //   deleter and provisioner. The plugin retunrs provided errors when a volume
@@ -841,9 +828,6 @@ func wrapTestWithPluginCalls(expectedRecycleCalls, expectedDeleteCalls []error, 
 			provisionCalls: expectedProvisionCalls,
 		}
 		ctrl.volumePluginMgr.InitPlugins([]vol.VolumePlugin{plugin}, ctrl)
-		if expectedProvisionCalls != nil {
-			ctrl.alphaProvisioner = plugin
-		}
 		return toWrap(ctrl, reactor, test)
 	}
 }
@@ -931,7 +915,10 @@ func runSyncTests(t *testing.T, tests []controllerTest, storageClasses []*storag
 
 		// Initialize the controller
 		client := &fake.Clientset{}
-		ctrl := newTestController(client, nil, true)
+		ctrl, err := newTestController(client, nil, true)
+		if err != nil {
+			t.Fatalf("Test %q construct persistent volume failed: %v", test.name, err)
+		}
 		reactor := newVolumeReactor(client, ctrl, nil, nil, test.errors)
 		for _, claim := range test.initialClaims {
 			ctrl.claims.Add(claim)
@@ -950,7 +937,7 @@ func runSyncTests(t *testing.T, tests []controllerTest, storageClasses []*storag
 		ctrl.classLister = storagelisters.NewStorageClassLister(indexer)
 
 		// Run the tested functions
-		err := test.test(ctrl, reactor, test)
+		err = test.test(ctrl, reactor, test)
 		if err != nil {
 			t.Errorf("Test %q failed: %v", test.name, err)
 		}
@@ -985,7 +972,10 @@ func runMultisyncTests(t *testing.T, tests []controllerTest, storageClasses []*s
 
 		// Initialize the controller
 		client := &fake.Clientset{}
-		ctrl := newTestController(client, nil, true)
+		ctrl, err := newTestController(client, nil, true)
+		if err != nil {
+			t.Fatalf("Test %q construct persistent volume failed: %v", test.name, err)
+		}
 
 		// Inject classes into controller via a custom lister.
 		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -1005,7 +995,7 @@ func runMultisyncTests(t *testing.T, tests []controllerTest, storageClasses []*s
 		}
 
 		// Run the tested function
-		err := test.test(ctrl, reactor, test)
+		err = test.test(ctrl, reactor, test)
 		if err != nil {
 			t.Errorf("Test %q failed: %v", test.name, err)
 		}
@@ -1127,6 +1117,14 @@ func (plugin *mockVolumePlugin) CanSupport(spec *vol.Spec) bool {
 }
 
 func (plugin *mockVolumePlugin) RequiresRemount() bool {
+	return false
+}
+
+func (plugin *mockVolumePlugin) SupportsMountOption() bool {
+	return false
+}
+
+func (plugin *mockVolumePlugin) SupportsBulkVolumeVerification() bool {
 	return false
 }
 

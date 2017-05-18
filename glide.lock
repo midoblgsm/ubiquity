@@ -1,5 +1,5 @@
 hash: 4c6026d52308d51853311abe929b994f44d356aab466bcbc8dfd8bd69270c9c2
-updated: 2017-04-04T11:45:37.78279491-07:00
+updated: 2017-05-18T15:05:13.200586197-07:00
 imports:
 - name: github.com/BurntSushi/toml
   version: b26d9c308763d68093482582cea63d69be07a0f0
@@ -26,10 +26,12 @@ imports:
   subpackages:
   - context
 - name: k8s.io/kubernetes
-  version: 98d693e9d24f585cb4e6615efdb3d07ec3a1616b
+  version: 249551461e038df9dae5e1a932334aa66a8dc701
   subpackages:
   - staging/src/k8s.io/client-go/_vendor/github.com/golang/glog
 testImports:
+- name: github.com/jarcoal/httpmock
+  version: 4442edb3db31196622da56482fd8d0fa375fba4d
 - name: github.com/onsi/ginkgo
   version: bb93381d543b0e5725244abe752214a110791d01
   subpackages:
@@ -68,6 +70,6 @@ testImports:
   subpackages:
   - unix
 - name: gopkg.in/jarcoal/httpmock.v1
-  version: abbf1543e32e3d8a74ab639e37d9b097178a6924
+  version: cf52904a3cf0f78f199ecade6a6df8e245d5b25a
 - name: gopkg.in/yaml.v2
   version: 53feefa2559fb8dfa8d81baad31be332c97d6c77

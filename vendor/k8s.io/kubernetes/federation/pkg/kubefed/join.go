@@ -23,7 +23,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/federation/pkg/kubefed/util"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
 	kubectlcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
@@ -32,6 +34,10 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/v1"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 const (
@@ -40,6 +46,7 @@ const (
 	// details.
 	// TODO(madhusudancs): Make this value customizable.
 	defaultClientCIDR = "0.0.0.0/0"
+	CMNameSuffix      = "controller-manager"
 )
 
 var (
@@ -72,6 +79,7 @@ type joinFederationOptions struct {
 func (o *joinFederationOptions) Bind(flags *pflag.FlagSet) {
 	flags.StringVar(&o.clusterContext, "cluster-context", "", "Name of the cluster's context in the local kubeconfig. Defaults to cluster name if unspecified.")
 	flags.StringVar(&o.secretName, "secret-name", "", "Name of the secret where the cluster's credentials will be stored in the host cluster. This name should be a valid RFC 1035 label. Defaults to cluster name if unspecified.")
+	flags.MarkDeprecated("secret-name", "kubefed now generates a secret name, and this flag will be removed in a future release.")
 }
 
 // NewCmdJoin defines the `join` command that joins a cluster to a
@@ -114,9 +122,6 @@ func (j *joinFederation) Complete(cmd *cobra.Command, args []string) error {
 	if j.options.clusterContext == "" {
 		j.options.clusterContext = j.commonOptions.Name
 	}
-	if j.options.secretName == "" {
-		j.options.secretName = j.commonOptions.Name
-	}
 
 	glog.V(2).Infof("Args and flags: name %s, host: %s, host-system-namespace: %s, kubeconfig: %s, cluster-context: %s, secret-name: %s, dry-run: %s", j.commonOptions.Name, j.commonOptions.Host, j.commonOptions.FederationSystemNamespace, j.commonOptions.Kubeconfig, j.options.clusterContext, j.options.secretName, j.options.dryRun)
 
@@ -131,14 +136,30 @@ func (j *joinFederation) Run(f cmdutil.Factory, cmdOut io.Writer, config util.Ad
 	if err != nil {
 		return err
 	}
-	generator, err := clusterGenerator(clientConfig, j.commonOptions.Name, j.options.clusterContext, j.options.secretName)
+	secretName := j.options.secretName
+	if secretName == "" {
+		secretName = v1.SimpleNameGenerator.GenerateName(j.commonOptions.Name + "-")
+	}
+
+	generator, err := clusterGenerator(clientConfig, j.commonOptions.Name, j.options.clusterContext, secretName)
 	if err != nil {
 		glog.V(2).Infof("Failed creating cluster generator: %v", err)
 		return err
 	}
 	glog.V(2).Infof("Created cluster generator: %#v", generator)
 
-	hostFactory := config.HostFactory(j.commonOptions.Host, j.commonOptions.Kubeconfig)
+	hostFactory := config.ClusterFactory(j.commonOptions.Host, j.commonOptions.Kubeconfig)
+	hostClientset, err := hostFactory.ClientSet()
+	if err != nil {
+		glog.V(2).Infof("Failed to get the cluster client for the host cluster: %q", j.commonOptions.Host, err)
+		return err
+	}
+
+	federationName, err := getFederationName(hostClientset, j.commonOptions.FederationSystemNamespace)
+	if err != nil {
+		glog.V(2).Infof("Failed to get the federation name: %v", err)
+		return err
+	}
 
 	// We are not using the `kubectl create secret` machinery through
 	// `RunCreateSubcommand` as we do to the cluster resource below
@@ -155,19 +176,33 @@ func (j *joinFederation) Run(f cmdutil.Factory, cmdOut io.Writer, config util.Ad
 	//    don't have to print the created secret in the default case.
 	// Having said that, secret generation machinery could be altered to
 	// suit our needs, but it is far less invasive and readable this way.
-	_, err = createSecret(hostFactory, clientConfig, j.commonOptions.FederationSystemNamespace, j.options.clusterContext, j.options.secretName, j.options.dryRun)
+	_, err = createSecret(hostClientset, clientConfig, j.commonOptions.FederationSystemNamespace, federationName, j.commonOptions.Name, j.options.clusterContext, secretName, j.options.dryRun)
 	if err != nil {
 		glog.V(2).Infof("Failed creating the cluster credentials secret: %v", err)
 		return err
 	}
 	glog.V(2).Infof("Cluster credentials secret created")
 
-	return kubectlcmd.RunCreateSubcommand(f, cmd, cmdOut, &kubectlcmd.CreateSubcommandOptions{
+	err = kubectlcmd.RunCreateSubcommand(f, cmd, cmdOut, &kubectlcmd.CreateSubcommandOptions{
 		Name:                j.commonOptions.Name,
 		StructuredGenerator: generator,
 		DryRun:              j.options.dryRun,
 		OutputFormat:        cmdutil.GetFlagString(cmd, "output"),
 	})
+	if err != nil {
+		return err
+	}
+
+	// We further need to create a configmap named kube-config in the
+	// just registered cluster which will be consumed by the kube-dns
+	// of this cluster.
+	_, err = createConfigMap(hostClientset, config, j.commonOptions.FederationSystemNamespace, federationName, j.commonOptions.Name, j.options.clusterContext, j.commonOptions.Kubeconfig, j.options.dryRun)
+	if err != nil {
+		glog.V(2).Infof("Failed creating the config map in cluster: %v", err)
+		return err
+	}
+
+	return err
 }
 
 // minifyConfig is a wrapper around `clientcmdapi.MinifyConfig()` that
@@ -189,7 +224,7 @@ func minifyConfig(clientConfig *clientcmdapi.Config, context string) (*clientcmd
 
 // createSecret extracts the kubeconfig for a given cluster and populates
 // a secret with that kubeconfig.
-func createSecret(hostFactory cmdutil.Factory, clientConfig *clientcmdapi.Config, namespace, contextName, secretName string, dryRun bool) (runtime.Object, error) {
+func createSecret(clientset internalclientset.Interface, clientConfig *clientcmdapi.Config, namespace, federationName, clusterName, contextName, secretName string, dryRun bool) (runtime.Object, error) {
 	// Minify the kubeconfig to ensure that there is only information
 	// relevant to the cluster we are registering.
 	newClientConfig, err := minifyConfig(clientConfig, contextName)
@@ -206,14 +241,70 @@ func createSecret(hostFactory cmdutil.Factory, clientConfig *clientcmdapi.Config
 		return nil, err
 	}
 
-	// Boilerplate to create the secret in the host cluster.
-	clientset, err := hostFactory.ClientSet()
+	return util.CreateKubeconfigSecret(clientset, newClientConfig, namespace, secretName, federationName, clusterName, dryRun)
+}
+
+// createConfigMap creates a configmap with name kube-dns in the joining cluster
+// which stores the information about this federation zone name.
+// If the configmap with this name already exists, its updated with this information.
+func createConfigMap(hostClientSet internalclientset.Interface, config util.AdminConfig, fedSystemNamespace, federationName, targetClusterName, targetClusterContext, kubeconfigPath string, dryRun bool) (*api.ConfigMap, error) {
+	cmDep, err := getCMDeployment(hostClientSet, fedSystemNamespace)
 	if err != nil {
-		glog.V(2).Infof("Failed to serialize the kubeconfig for the given context %q: %v", contextName, err)
+		return nil, err
+	}
+	domainMap, ok := cmDep.Annotations[util.FedDomainMapKey]
+	if !ok {
+		return nil, fmt.Errorf("kube-dns config map data missing from controller manager annotations")
+	}
+
+	targetFactory := config.ClusterFactory(targetClusterContext, kubeconfigPath)
+	targetClientSet, err := targetFactory.ClientSet()
+	if err != nil {
 		return nil, err
 	}
 
-	return util.CreateKubeconfigSecret(clientset, newClientConfig, namespace, secretName, dryRun)
+	existingConfigMap, err := targetClientSet.Core().ConfigMaps(metav1.NamespaceSystem).Get(util.KubeDnsConfigmapName, metav1.GetOptions{})
+	if isNotFound(err) {
+		newConfigMap := &api.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      util.KubeDnsConfigmapName,
+				Namespace: metav1.NamespaceSystem,
+				Annotations: map[string]string{
+					federation.FederationNameAnnotation: federationName,
+					federation.ClusterNameAnnotation:    targetClusterName,
+				},
+			},
+			Data: map[string]string{
+				util.FedDomainMapKey: domainMap,
+			},
+		}
+		newConfigMap = populateStubDomainsIfRequired(newConfigMap, cmDep.Annotations)
+
+		if dryRun {
+			return newConfigMap, nil
+		}
+		return targetClientSet.Core().ConfigMaps(metav1.NamespaceSystem).Create(newConfigMap)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if existingConfigMap.Data == nil {
+		existingConfigMap.Data = make(map[string]string)
+	}
+	if _, ok := existingConfigMap.Data[util.FedDomainMapKey]; ok {
+		// Append this federation info
+		existingConfigMap.Data[util.FedDomainMapKey] = appendConfigMapString(existingConfigMap.Data[util.FedDomainMapKey], cmDep.Annotations[util.FedDomainMapKey])
+
+	} else {
+		// For some reason the configMap exists but this data is empty
+		existingConfigMap.Data[util.FedDomainMapKey] = cmDep.Annotations[util.FedDomainMapKey]
+	}
+
+	if dryRun {
+		return existingConfigMap, nil
+	}
+	return targetClientSet.Core().ConfigMaps(metav1.NamespaceSystem).Update(existingConfigMap)
 }
 
 // clusterGenerator extracts the cluster information from the supplied
@@ -260,4 +351,62 @@ func extractScheme(url string) string {
 		scheme = segs[0]
 	}
 	return scheme
+}
+
+func getCMDeployment(hostClientSet internalclientset.Interface, fedNamespace string) (*extensions.Deployment, error) {
+	depList, err := hostClientSet.Extensions().Deployments(fedNamespace).List(metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dep := range depList.Items {
+		if strings.HasSuffix(dep.Name, CMNameSuffix) {
+			return &dep, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find the deployment for controller manager in host cluster")
+}
+
+func appendConfigMapString(existing string, toAppend string) string {
+	if existing == "" {
+		return toAppend
+	}
+
+	values := strings.Split(existing, ",")
+	for _, v := range values {
+		// Somehow this federation string is already present,
+		// Nothing should be done
+		if v == toAppend {
+			return existing
+		}
+	}
+	return fmt.Sprintf("%s,%s", existing, toAppend)
+}
+
+// getFederationName gets the federation name from the appropriate annotation on the
+// control manager deployment.
+func getFederationName(hostClientSet internalclientset.Interface, fedNamespace string) (string, error) {
+	d, err := getCMDeployment(hostClientSet, fedNamespace)
+	if err != nil {
+		return "", err
+	}
+
+	name, ok := d.Annotations[federation.FederationNameAnnotation]
+	if !ok {
+		return "", fmt.Errorf("Federation control manager does not have federation name annotation. Please recreate the federation with a newer version of kubefed, or use an older version of kubefed to join this cluster.")
+	}
+
+	return name, nil
+}
+
+func populateStubDomainsIfRequired(configMap *api.ConfigMap, annotations map[string]string) *api.ConfigMap {
+	dnsProvider := annotations[util.FedDNSProvider]
+	dnsZoneName := annotations[util.FedDNSZoneName]
+	nameServer := annotations[util.FedNameServer]
+
+	if dnsProvider != util.FedDNSProviderCoreDNS || dnsZoneName == "" || nameServer == "" {
+		return configMap
+	}
+	configMap.Data[util.KubeDnsStubDomains] = fmt.Sprintf(`{"%s":["%s"]}`, dnsZoneName, nameServer)
+	return configMap
 }

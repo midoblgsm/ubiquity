@@ -1,5 +1,3 @@
-// +build integration,!no-etcd
-
 /*
 Copyright 2014 The Kubernetes Authors.
 
@@ -33,8 +31,8 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/v1"
-	storage "k8s.io/kubernetes/pkg/apis/storage/v1beta1"
-	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1beta1/util"
+	"k8s.io/kubernetes/pkg/api/v1/ref"
+	storage "k8s.io/kubernetes/pkg/apis/storage/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/externalversions"
 	fakecloud "k8s.io/kubernetes/pkg/cloudprovider/providers/fake"
@@ -105,8 +103,8 @@ func testSleep() {
 
 func TestPersistentVolumeRecycler(t *testing.T) {
 	glog.V(2).Infof("TestPersistentVolumeRecycler started")
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("pv-recycler", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -126,7 +124,7 @@ func TestPersistentVolumeRecycler(t *testing.T) {
 
 	// This PV will be claimed, released, and recycled.
 	pv := createPV("fake-pv-recycler", "/tmp/foo", "10G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimRecycle)
-	pvc := createPVC("fake-pvc-recycler", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+	pvc := createPVC("fake-pvc-recycler", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 
 	_, err := testClient.PersistentVolumes().Create(pv)
 	if err != nil {
@@ -160,8 +158,8 @@ func TestPersistentVolumeRecycler(t *testing.T) {
 
 func TestPersistentVolumeDeleter(t *testing.T) {
 	glog.V(2).Infof("TestPersistentVolumeDeleter started")
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("pv-deleter", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -181,7 +179,7 @@ func TestPersistentVolumeDeleter(t *testing.T) {
 
 	// This PV will be claimed, released, and deleted.
 	pv := createPV("fake-pv-deleter", "/tmp/foo", "10G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimDelete)
-	pvc := createPVC("fake-pvc-deleter", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+	pvc := createPVC("fake-pvc-deleter", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 
 	_, err := testClient.PersistentVolumes().Create(pv)
 	if err != nil {
@@ -220,8 +218,8 @@ func TestPersistentVolumeBindRace(t *testing.T) {
 	// Test a race binding many claims to a PV that is pre-bound to a specific
 	// PVC. Only this specific PVC should get bound.
 	glog.V(2).Infof("TestPersistentVolumeBindRace started")
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("pv-bind-race", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -240,7 +238,7 @@ func TestPersistentVolumeBindRace(t *testing.T) {
 	defer close(stopCh)
 
 	pv := createPV("fake-pv-race", "/tmp/foo", "10G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimRetain)
-	pvc := createPVC("fake-pvc-race", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+	pvc := createPVC("fake-pvc-race", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 	counter := 0
 	maxClaims := 100
 	claims := []*v1.PersistentVolumeClaim{}
@@ -260,7 +258,7 @@ func TestPersistentVolumeBindRace(t *testing.T) {
 	// putting a bind manually on a pv should only match the claim it is bound to
 	rand.Seed(time.Now().Unix())
 	claim := claims[rand.Intn(maxClaims-1)]
-	claimRef, err := v1.GetReference(api.Scheme, claim)
+	claimRef, err := ref.GetReference(api.Scheme, claim)
 	if err != nil {
 		t.Fatalf("Unexpected error getting claimRef: %v", err)
 	}
@@ -292,8 +290,8 @@ func TestPersistentVolumeBindRace(t *testing.T) {
 
 // TestPersistentVolumeClaimLabelSelector test binding using label selectors
 func TestPersistentVolumeClaimLabelSelector(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("pvc-label-selector", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -318,7 +316,7 @@ func TestPersistentVolumeClaimLabelSelector(t *testing.T) {
 
 		pv_true  = createPV("pv-true", "/tmp/foo-label", "1G", modes, reclaim)
 		pv_false = createPV("pv-false", "/tmp/foo-label", "1G", modes, reclaim)
-		pvc      = createPVC("pvc-ls-1", ns.Name, "1G", modes)
+		pvc      = createPVC("pvc-ls-1", ns.Name, "1G", modes, "")
 	)
 
 	pv_true.ObjectMeta.SetLabels(map[string]string{"foo": "true"})
@@ -373,8 +371,8 @@ func TestPersistentVolumeClaimLabelSelector(t *testing.T) {
 // TestPersistentVolumeClaimLabelSelectorMatchExpressions test binding using
 // MatchExpressions label selectors
 func TestPersistentVolumeClaimLabelSelectorMatchExpressions(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("pvc-match-expressions", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -399,7 +397,7 @@ func TestPersistentVolumeClaimLabelSelectorMatchExpressions(t *testing.T) {
 
 		pv_true  = createPV("pv-true", "/tmp/foo-label", "1G", modes, reclaim)
 		pv_false = createPV("pv-false", "/tmp/foo-label", "1G", modes, reclaim)
-		pvc      = createPVC("pvc-ls-1", ns.Name, "1G", modes)
+		pvc      = createPVC("pvc-ls-1", ns.Name, "1G", modes, "")
 	)
 
 	pv_true.ObjectMeta.SetLabels(map[string]string{"foo": "valA", "bar": ""})
@@ -473,8 +471,8 @@ func TestPersistentVolumeClaimLabelSelectorMatchExpressions(t *testing.T) {
 // TestPersistentVolumeMultiPVs tests binding of one PVC to 100 PVs with
 // different size.
 func TestPersistentVolumeMultiPVs(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("multi-pvs", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -500,7 +498,7 @@ func TestPersistentVolumeMultiPVs(t *testing.T) {
 			[]v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimRetain)
 	}
 
-	pvc := createPVC("pvc-2", ns.Name, strconv.Itoa(maxPVs/2)+"G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+	pvc := createPVC("pvc-2", ns.Name, strconv.Itoa(maxPVs/2)+"G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 
 	for i := 0; i < maxPVs; i++ {
 		_, err := testClient.PersistentVolumes().Create(pvs[i])
@@ -563,8 +561,8 @@ func TestPersistentVolumeMultiPVs(t *testing.T) {
 // TestPersistentVolumeMultiPVsPVCs tests binding of 100 PVC to 100 PVs.
 // This test is configurable by KUBE_INTEGRATION_PV_* variables.
 func TestPersistentVolumeMultiPVsPVCs(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("multi-pvs-pvcs", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -589,7 +587,7 @@ func TestPersistentVolumeMultiPVsPVCs(t *testing.T) {
 		// This PV will be claimed, released, and deleted
 		pvs[i] = createPV("pv-"+strconv.Itoa(i), "/tmp/foo"+strconv.Itoa(i), "1G",
 			[]v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimRetain)
-		pvcs[i] = createPVC("pvc-"+strconv.Itoa(i), ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+		pvcs[i] = createPVC("pvc-"+strconv.Itoa(i), ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 	}
 
 	// Create PVs first
@@ -724,8 +722,8 @@ func TestPersistentVolumeMultiPVsPVCs(t *testing.T) {
 // TestPersistentVolumeControllerStartup tests startup of the controller.
 // The controller should not unbind any volumes when it starts.
 func TestPersistentVolumeControllerStartup(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("controller-startup", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -746,7 +744,7 @@ func TestPersistentVolumeControllerStartup(t *testing.T) {
 		pvName := "pv-startup-" + strconv.Itoa(i)
 		pvcName := "pvc-startup-" + strconv.Itoa(i)
 
-		pvc := createPVC(pvcName, ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
+		pvc := createPVC(pvcName, ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "")
 		pvc.Annotations = map[string]string{"annBindCompleted": ""}
 		pvc.Spec.VolumeName = pvName
 		newPVC, err := testClient.PersistentVolumeClaims(ns.Name).Create(pvc)
@@ -761,13 +759,13 @@ func TestPersistentVolumeControllerStartup(t *testing.T) {
 		}
 		pvcs[i] = newPVC
 		// Drain watchPVC with all events generated by the PVC until it's bound
-		// We don't want to catch "PVC craated with Status.Phase == Pending"
+		// We don't want to catch "PVC created with Status.Phase == Pending"
 		// later in this test.
 		waitForAnyPersistentVolumeClaimPhase(watchPVC, v1.ClaimBound)
 
 		pv := createPV(pvName, "/tmp/foo"+strconv.Itoa(i), "1G",
 			[]v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, v1.PersistentVolumeReclaimRetain)
-		claimRef, err := v1.GetReference(api.Scheme, newPVC)
+		claimRef, err := ref.GetReference(api.Scheme, newPVC)
 		if err != nil {
 			glog.V(3).Infof("unexpected error getting claim reference: %v", err)
 			return
@@ -853,8 +851,8 @@ func TestPersistentVolumeControllerStartup(t *testing.T) {
 // TestPersistentVolumeProvisionMultiPVCs tests provisioning of many PVCs.
 // This test is configurable by KUBE_INTEGRATION_PV_* variables.
 func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("provision-multi-pvs", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -866,7 +864,7 @@ func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
 	// NOTE: This test cannot run in parallel, because it is creating and deleting
 	// non-namespaced objects (PersistenceVolumes and StorageClasses).
 	defer testClient.Core().PersistentVolumes().DeleteCollection(nil, metav1.ListOptions{})
-	defer testClient.Storage().StorageClasses().DeleteCollection(nil, metav1.ListOptions{})
+	defer testClient.StorageV1().StorageClasses().DeleteCollection(nil, metav1.ListOptions{})
 
 	storageClass := storage.StorageClass{
 		TypeMeta: metav1.TypeMeta{
@@ -877,7 +875,7 @@ func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
 		},
 		Provisioner: provisionerPluginName,
 	}
-	testClient.Storage().StorageClasses().Create(&storageClass)
+	testClient.StorageV1().StorageClasses().Create(&storageClass)
 
 	stopCh := make(chan struct{})
 	informers.Start(stopCh)
@@ -887,10 +885,7 @@ func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
 	objCount := getObjectCount()
 	pvcs := make([]*v1.PersistentVolumeClaim, objCount)
 	for i := 0; i < objCount; i++ {
-		pvc := createPVC("pvc-provision-"+strconv.Itoa(i), ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce})
-		pvc.Annotations = map[string]string{
-			storageutil.StorageClassAnnotation: "gold",
-		}
+		pvc := createPVC("pvc-provision-"+strconv.Itoa(i), ns.Name, "1G", []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}, "gold")
 		pvcs[i] = pvc
 	}
 
@@ -951,8 +946,8 @@ func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
 // TestPersistentVolumeMultiPVsDiffAccessModes tests binding of one PVC to two
 // PVs with different access modes.
 func TestPersistentVolumeMultiPVsDiffAccessModes(t *testing.T) {
-	_, s := framework.RunAMaster(nil)
-	defer s.Close()
+	_, s, closeFn := framework.RunAMaster(nil)
+	defer closeFn()
 
 	ns := framework.CreateTestingNamespace("multi-pvs-diff-access", s, t)
 	defer framework.DeleteTestingNamespace(ns, s, t)
@@ -976,7 +971,7 @@ func TestPersistentVolumeMultiPVsDiffAccessModes(t *testing.T) {
 	pv_rwm := createPV("pv-rwm", "/tmp/bar", "10G",
 		[]v1.PersistentVolumeAccessMode{v1.ReadWriteMany}, v1.PersistentVolumeReclaimRetain)
 
-	pvc := createPVC("pvc-rwm", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteMany})
+	pvc := createPVC("pvc-rwm", ns.Name, "5G", []v1.PersistentVolumeAccessMode{v1.ReadWriteMany}, "")
 
 	_, err := testClient.PersistentVolumes().Create(pv_rwm)
 	if err != nil {
@@ -1131,7 +1126,7 @@ func createClients(ns *v1.Namespace, t *testing.T, s *httptest.Server, syncPerio
 	plugins := []volume.VolumePlugin{plugin}
 	cloud := &fakecloud.FakeCloud{}
 	informers := informers.NewSharedInformerFactory(testClient, getSyncPeriod(syncPeriod))
-	ctrl := persistentvolumecontroller.NewController(
+	ctrl, err := persistentvolumecontroller.NewController(
 		persistentvolumecontroller.ControllerParameters{
 			KubeClient:                binderClient,
 			SyncPeriod:                getSyncPeriod(syncPeriod),
@@ -1139,9 +1134,12 @@ func createClients(ns *v1.Namespace, t *testing.T, s *httptest.Server, syncPerio
 			Cloud:                     cloud,
 			VolumeInformer:            informers.Core().V1().PersistentVolumes(),
 			ClaimInformer:             informers.Core().V1().PersistentVolumeClaims(),
-			ClassInformer:             informers.Storage().V1beta1().StorageClasses(),
+			ClassInformer:             informers.Storage().V1().StorageClasses(),
 			EnableDynamicProvisioning: true,
 		})
+	if err != nil {
+		t.Fatalf("Failed to construct PersistentVolumes: %v", err)
+	}
 
 	watchPV, err := testClient.PersistentVolumes().Watch(metav1.ListOptions{})
 	if err != nil {
@@ -1167,15 +1165,16 @@ func createPV(name, path, cap string, mode []v1.PersistentVolumeAccessMode, recl
 	}
 }
 
-func createPVC(name, namespace, cap string, mode []v1.PersistentVolumeAccessMode) *v1.PersistentVolumeClaim {
+func createPVC(name, namespace, cap string, mode []v1.PersistentVolumeAccessMode, class string) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
-			Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse(cap)}},
-			AccessModes: mode,
+			Resources:        v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse(cap)}},
+			AccessModes:      mode,
+			StorageClassName: &class,
 		},
 	}
 }

@@ -17,8 +17,10 @@ limitations under the License.
 package statefulset
 
 import (
+	"fmt"
 	"sort"
 
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/kubernetes/pkg/api/v1"
 	apps "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 
@@ -72,6 +74,7 @@ func (ssc *defaultStatefulSetControl) UpdateStatefulSet(set *apps.StatefulSet, p
 			// if the ordinal is greater than the number of replicas add it to the condemned list
 			condemned = append(condemned, pods[i])
 		}
+		// If the ordinal could not be parsed (ord < 0), ignore the Pod.
 	}
 
 	// for any empty indices in the sequence [0,set.Spec.Replicas) create a new Pod
@@ -97,8 +100,22 @@ func (ssc *defaultStatefulSetControl) UpdateStatefulSet(set *apps.StatefulSet, p
 	sort.Sort(ascendingOrdinal(condemned))
 
 	// if the current number of replicas has changed update the statefulSets replicas
-	if err := ssc.podControl.UpdateStatefulSetReplicas(set, int32(ready)); err != nil {
-		return err
+	if set.Status.Replicas != int32(ready) || set.Status.ObservedGeneration == nil || set.Generation > *set.Status.ObservedGeneration {
+		obj, err := scheme.Scheme.Copy(set)
+		if err != nil {
+			return fmt.Errorf("unable to copy set: %v", err)
+		}
+		set = obj.(*apps.StatefulSet)
+
+		if err := ssc.podControl.UpdateStatefulSetStatus(set, int32(ready), set.Generation); err != nil {
+			return err
+		}
+	}
+
+	// If the StatefulSet is being deleted, don't do anything other than updating
+	// status.
+	if set.DeletionTimestamp != nil {
+		return nil
 	}
 
 	// Examine each replica with respect to its ordinal
@@ -115,6 +132,13 @@ func (ssc *defaultStatefulSetControl) UpdateStatefulSet(set *apps.StatefulSet, p
 		if !isCreated(replicas[i]) {
 			return ssc.podControl.CreateStatefulPod(set, replicas[i])
 		}
+		// If we find a Pod that is currently terminating, we must wait until graceful deletion
+		// completes before we continue to make  progress.
+		if isTerminating(replicas[i]) {
+			glog.V(2).Infof("StatefulSet %s is waiting for Pod %s to Terminate",
+				set.Name, replicas[i].Name)
+			return nil
+		}
 		// If we have a Pod that has been created but is not running and ready we can not make progress.
 		// We must ensure that all for each Pod, when we create it, all of its predecessors, with respect to its
 		// ordinal, are Running and Ready.
@@ -123,8 +147,17 @@ func (ssc *defaultStatefulSetControl) UpdateStatefulSet(set *apps.StatefulSet, p
 				set.Name, replicas[i].Name)
 			return nil
 		}
-		// Enforce the StatefulSet invariants,
-		if err := ssc.podControl.UpdateStatefulPod(set, replicas[i]); err != nil {
+		// Enforce the StatefulSet invariants
+		if identityMatches(set, replicas[i]) && storageMatches(set, replicas[i]) {
+			continue
+		}
+		// Make a deep copy so we don't mutate the shared cache
+		copy, err := scheme.Scheme.DeepCopy(replicas[i])
+		if err != nil {
+			return err
+		}
+		replica := copy.(*v1.Pod)
+		if err := ssc.podControl.UpdateStatefulPod(set, replica); err != nil {
 			return err
 		}
 	}

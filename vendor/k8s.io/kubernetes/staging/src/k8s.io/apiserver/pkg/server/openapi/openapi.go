@@ -32,7 +32,8 @@ import (
 )
 
 const (
-	OpenAPIVersion = "2.0"
+	OpenAPIVersion  = "2.0"
+	extensionPrefix = "x-kubernetes-"
 )
 
 type openAPI struct {
@@ -44,7 +45,7 @@ type openAPI struct {
 }
 
 // RegisterOpenAPIService registers a handler to provides standard OpenAPI specification.
-func RegisterOpenAPIService(servePath string, webServices []*restful.WebService, config *openapi.Config, container *genericmux.APIContainer) (err error) {
+func RegisterOpenAPIService(servePath string, webServices []*restful.WebService, config *openapi.Config, mux *genericmux.PathRecorderMux) (err error) {
 	o := openAPI{
 		config:    config,
 		servePath: servePath,
@@ -63,7 +64,7 @@ func RegisterOpenAPIService(servePath string, webServices []*restful.WebService,
 		return err
 	}
 
-	container.UnlistedRoutes.HandleFunc(servePath, func(w http.ResponseWriter, r *http.Request) {
+	mux.UnlistedHandleFunc(servePath, func(w http.ResponseWriter, r *http.Request) {
 		resp := restful.NewResponse(w)
 		if r.URL.Path != servePath {
 			resp.WriteErrorString(http.StatusNotFound, "Path not found!")
@@ -127,11 +128,14 @@ func (o *openAPI) buildDefinitionRecursively(name string) error {
 	}
 	if item, ok := o.definitions[name]; ok {
 		schema := spec.Schema{
+			VendorExtensible:   item.Schema.VendorExtensible,
 			SchemaProps:        item.Schema.SchemaProps,
 			SwaggerSchemaProps: item.Schema.SwaggerSchemaProps,
 		}
 		if extensions != nil {
-			schema.Extensions = spec.Extensions{}
+			if schema.Extensions == nil {
+				schema.Extensions = spec.Extensions{}
+			}
 			for k, v := range extensions {
 				schema.Extensions[k] = v
 			}
@@ -255,6 +259,14 @@ func (o *openAPI) buildOperations(route restful.Route, inPathCommonParamsMap map
 				},
 			},
 		},
+	}
+	for k, v := range route.Metadata {
+		if strings.HasPrefix(k, extensionPrefix) {
+			if ret.Extensions == nil {
+				ret.Extensions = spec.Extensions{}
+			}
+			ret.Extensions.Add(k, v)
+		}
 	}
 	if ret.ID, ret.Tags, err = o.config.GetOperationIDAndTags(o.servePath, &route); err != nil {
 		return ret, err

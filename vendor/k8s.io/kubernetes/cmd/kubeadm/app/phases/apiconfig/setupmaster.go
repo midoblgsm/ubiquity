@@ -25,45 +25,40 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
+	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+	"k8s.io/kubernetes/pkg/util/node"
 )
 
 const apiCallRetryInterval = 500 * time.Millisecond
 
 // TODO: Can we think of any unit tests here? Or should this code just be covered through integration/e2e tests?
 
-// It's safe to do this for alpha, as we don't have HA and there is no way we can get
-// more then one node here (TODO(phase1+) use os.Hostname)
-func findMyself(client *clientset.Clientset) (*v1.Node, error) {
-	nodeList, err := client.Nodes().List(metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("unable to list nodes [%v]", err)
-	}
-	if len(nodeList.Items) < 1 {
-		return nil, fmt.Errorf("no nodes found")
-	}
-	node := &nodeList.Items[0]
-	return node, nil
-}
-
 func attemptToUpdateMasterRoleLabelsAndTaints(client *clientset.Clientset) error {
-	n, err := findMyself(client)
-	if err != nil {
-		return err
-	}
+	var n *v1.Node
+
+	// Wait for current node registration
+	wait.PollInfinite(kubeadmconstants.APICallRetryInterval, func() (bool, error) {
+		var err error
+		if n, err = client.Nodes().Get(node.GetHostname(""), metav1.GetOptions{}); err != nil {
+			return false, nil
+		}
+		// The node may appear to have no labels at first,
+		// so we wait for it to get hostname label.
+		_, found := n.ObjectMeta.Labels[metav1.LabelHostname]
+		return found, nil
+	})
 
 	oldData, err := json.Marshal(n)
 	if err != nil {
 		return err
 	}
 
-	// TODO: Switch to the new master label defined in https://github.com/kubernetes/kubernetes/pull/39112
-	n.ObjectMeta.Labels[metav1.NodeLabelKubeadmAlphaRole] = metav1.NodeLabelRoleMaster
-
-	// TODO: Use the Taints beta field on the NodeSpec now
-	taintsAnnotation, _ := json.Marshal([]v1.Taint{{Key: "dedicated", Value: "master", Effect: "NoSchedule"}})
-	n.ObjectMeta.Annotations[v1.TaintsAnnotationKey] = string(taintsAnnotation)
+	// The master node is tainted and labelled accordingly
+	n.ObjectMeta.Labels[kubeadmconstants.LabelNodeRoleMaster] = ""
+	n.Spec.Taints = append(n.Spec.Taints, v1.Taint{Key: kubeadmconstants.LabelNodeRoleMaster, Value: "", Effect: "NoSchedule"})
 
 	newData, err := json.Marshal(n)
 	if err != nil {

@@ -87,6 +87,14 @@ func (plugin *awsElasticBlockStorePlugin) RequiresRemount() bool {
 	return false
 }
 
+func (plugin *awsElasticBlockStorePlugin) SupportsMountOption() bool {
+	return true
+}
+
+func (plugin *awsElasticBlockStorePlugin) SupportsBulkVolumeVerification() bool {
+	return true
+}
+
 func (plugin *awsElasticBlockStorePlugin) GetAccessModes() []v1.PersistentVolumeAccessMode {
 	return []v1.PersistentVolumeAccessMode{
 		v1.ReadWriteOnce,
@@ -285,12 +293,12 @@ func (b *awsElasticBlockStoreMounter) CanMount() error {
 }
 
 // SetUp attaches the disk and bind mounts to the volume path.
-func (b *awsElasticBlockStoreMounter) SetUp(fsGroup *int64) error {
+func (b *awsElasticBlockStoreMounter) SetUp(fsGroup *types.UnixGroupID) error {
 	return b.SetUpAt(b.GetPath(), fsGroup)
 }
 
 // SetUpAt attaches the disk and bind mounts to the volume path.
-func (b *awsElasticBlockStoreMounter) SetUpAt(dir string, fsGroup *int64) error {
+func (b *awsElasticBlockStoreMounter) SetUpAt(dir string, fsGroup *types.UnixGroupID) error {
 	// TODO: handle failed mounts here.
 	notMnt, err := b.mounter.IsLikelyNotMountPoint(dir)
 	glog.V(4).Infof("PersistentDisk set up: %s %v %v", dir, !notMnt, err)

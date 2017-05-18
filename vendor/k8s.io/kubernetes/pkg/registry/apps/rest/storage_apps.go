@@ -24,7 +24,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/apps"
 	appsapiv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
-	statefulsetstore "k8s.io/kubernetes/pkg/registry/apps/petset/storage"
+	statefulsetstore "k8s.io/kubernetes/pkg/registry/apps/statefulset/storage"
+	deploymentstore "k8s.io/kubernetes/pkg/registry/extensions/deployment/storage"
 )
 
 type RESTStorageProvider struct{}
@@ -44,6 +45,13 @@ func (p RESTStorageProvider) v1beta1Storage(apiResourceConfigSource serverstorag
 	version := appsapiv1beta1.SchemeGroupVersion
 
 	storage := map[string]rest.Storage{}
+	if apiResourceConfigSource.ResourceEnabled(version.WithResource("deployments")) {
+		deploymentStorage := deploymentstore.NewStorage(restOptionsGetter)
+		storage["deployments"] = deploymentStorage.Deployment
+		storage["deployments/status"] = deploymentStorage.Status
+		storage["deployments/rollback"] = deploymentStorage.Rollback
+		storage["deployments/scale"] = deploymentStorage.Scale
+	}
 	if apiResourceConfigSource.ResourceEnabled(version.WithResource("statefulsets")) {
 		statefulsetStorage, statefulsetStatusStorage := statefulsetstore.NewREST(restOptionsGetter)
 		storage["statefulsets"] = statefulsetStorage

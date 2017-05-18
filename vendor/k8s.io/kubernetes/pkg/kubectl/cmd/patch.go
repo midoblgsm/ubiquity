@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/printers"
 	"k8s.io/kubernetes/pkg/util/i18n"
 )
 
@@ -55,14 +56,14 @@ type PatchOptions struct {
 }
 
 var (
-	patch_long = templates.LongDesc(`
+	patchLong = templates.LongDesc(i18n.T(`
 		Update field(s) of a resource using strategic merge patch
 
 		JSON and YAML formats are accepted.
 
-		Please refer to the models in https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/HEAD/docs/api-reference/v1/definitions.html to find if a field is mutable.`)
+		Please refer to the models in https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/HEAD/docs/api-reference/v1/definitions.html to find if a field is mutable.`))
 
-	patch_example = templates.Examples(`
+	patchExample = templates.Examples(i18n.T(`
 		# Partially update a node using strategic merge patch
 		kubectl patch node k8s-node-1 -p '{"spec":{"unschedulable":true}}'
 
@@ -73,7 +74,7 @@ var (
 		kubectl patch pod valid-pod -p '{"spec":{"containers":[{"name":"kubernetes-serve-hostname","image":"new image"}]}}'
 
 		# Update a container's image using a json patch with positional arrays
-		kubectl patch pod valid-pod --type='json' -p='[{"op": "replace", "path": "/spec/containers/0/image", "value":"new image"}]'`)
+		kubectl patch pod valid-pod --type='json' -p='[{"op": "replace", "path": "/spec/containers/0/image", "value":"new image"}]'`))
 )
 
 func NewCmdPatch(f cmdutil.Factory, out io.Writer) *cobra.Command {
@@ -81,7 +82,7 @@ func NewCmdPatch(f cmdutil.Factory, out io.Writer) *cobra.Command {
 
 	// retrieve a list of handled resources from printer as valid args
 	validArgs, argAliases := []string{}, []string{}
-	p, err := f.Printer(nil, kubectl.PrintOptions{
+	p, err := f.Printer(nil, printers.PrintOptions{
 		ColumnLabels: []string{},
 	})
 	cmdutil.CheckErr(err)
@@ -93,8 +94,8 @@ func NewCmdPatch(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "patch (-f FILENAME | TYPE NAME) -p PATCH",
 		Short:   i18n.T("Update field(s) of a resource using strategic merge patch"),
-		Long:    patch_long,
-		Example: patch_example,
+		Long:    patchLong,
+		Example: patchExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			options.OutputFormat = cmdutil.GetFlagString(cmd, "output")
 			err := RunPatch(f, out, cmd, args, options)
@@ -152,7 +153,7 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 	if err != nil {
 		return err
 	}
-	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme).
+	r := resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &options.FilenameOptions).
@@ -189,9 +190,11 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 				infoCopy := *info
 				infoCopy.Object = patchedObj
 				infoCopy.VersionedObject = patchedObj
-				if patch, patchType, err := cmdutil.ChangeResourcePatch(&infoCopy, f.Command()); err == nil {
-					if _, err = helper.Patch(info.Namespace, info.Name, patchType, patch); err != nil {
+				if patch, patchType, err := cmdutil.ChangeResourcePatch(&infoCopy, f.Command(cmd, true)); err == nil {
+					if recordedObj, err := helper.Patch(info.Namespace, info.Name, patchType, patch); err != nil {
 						glog.V(4).Infof("error recording reason: %v", err)
+					} else {
+						patchedObj = recordedObj
 					}
 				}
 			}
@@ -209,9 +212,15 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 				dataChangedMsg = "patched"
 			}
 
-			if options.OutputFormat == "name" || len(options.OutputFormat) == 0 {
-				cmdutil.PrintSuccess(mapper, options.OutputFormat == "name", out, info.Mapping.Resource, info.Name, false, dataChangedMsg)
+			// After computing whether we changed data, refresh the resource info with the resulting object
+			if err := info.Refresh(patchedObj, true); err != nil {
+				return err
 			}
+
+			if len(options.OutputFormat) > 0 && options.OutputFormat != "name" {
+				return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
+			}
+			cmdutil.PrintSuccess(mapper, options.OutputFormat == "name", out, info.Mapping.Resource, info.Name, false, dataChangedMsg)
 			return nil
 		}
 
@@ -233,16 +242,10 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 		// rawExtension := &runtime.Unknown{
 		//	Raw: originalPatchedObjJS,
 		// }
-
-		printer, err := f.PrinterForMapping(cmd, mapping, false)
-		if err != nil {
+		if err := info.Refresh(targetObj, true); err != nil {
 			return err
 		}
-		if err := printer.PrintObj(targetObj, out); err != nil {
-			return err
-		}
-
-		return nil
+		return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
 	})
 	if err != nil {
 		return err

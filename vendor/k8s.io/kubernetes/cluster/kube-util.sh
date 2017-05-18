@@ -28,6 +28,12 @@ else
     KUBERNETES_PROVIDER="${KUBERNETES_PROVIDER:-gce}"
 fi
 
+# PROVIDER_VARS is a list of cloud provider specific variables. Note:
+# this is a list of the _names_ of the variables, not the value of the
+# variables. Providers can add variables to be appended to kube-env.
+# (see `build-kube-env`).
+PROVIDER_VARS=""
+
 PROVIDER_UTILS="${KUBE_ROOT}/cluster/${KUBERNETES_PROVIDER}/util.sh"
 if [ -f ${PROVIDER_UTILS} ]; then
     source "${PROVIDER_UTILS}"
@@ -36,13 +42,18 @@ fi
 # Federation utils
 
 # Sets the kubeconfig context value for the current cluster.
+# Args:
+#   $1: zone (required)
 #
 # Vars set:
 #   CLUSTER_CONTEXT
 function kubeconfig-federation-context() {
-  CLUSTER_CONTEXT="federation-e2e-${KUBERNETES_PROVIDER}-$zone"
+  if [[ -z "${1:-}" ]]; then
+    echo "zone parameter is required"
+    exit 1
+  fi
+  CLUSTER_CONTEXT="federation-e2e-${KUBERNETES_PROVIDER}-${1}"
 }
-
 
 # Should NOT be called within the global scope, unless setting the desired global zone vars
 # This function is currently NOT USED in the global scope

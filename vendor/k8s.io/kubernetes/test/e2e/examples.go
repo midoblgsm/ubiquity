@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/kubernetes/pkg/api/v1"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	rbacv1beta1 "k8s.io/kubernetes/pkg/apis/rbac/v1beta1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -264,20 +265,19 @@ var _ = framework.KubeDescribe("[Feature:Example]", func() {
 	framework.KubeDescribe("CassandraStatefulSet", func() {
 		It("should create statefulset", func() {
 			mkpath := func(file string) string {
-				return filepath.Join(framework.TestContext.RepoRoot, "examples/storage/cassandra", file)
+				return filepath.Join("examples/storage/cassandra", file)
 			}
 			serviceYaml := mkpath("cassandra-service.yaml")
 			nsFlag := fmt.Sprintf("--namespace=%v", ns)
 
 			// have to change dns prefix because of the dynamic namespace
-			input, err := ioutil.ReadFile(mkpath("cassandra-statefulset.yaml"))
-			Expect(err).NotTo(HaveOccurred())
+			input := generated.ReadOrDie(mkpath("cassandra-statefulset.yaml"))
 
 			output := strings.Replace(string(input), "cassandra-0.cassandra.default.svc.cluster.local", "cassandra-0.cassandra."+ns+".svc.cluster.local", -1)
 
 			statefulsetYaml := "/tmp/cassandra-statefulset.yaml"
 
-			err = ioutil.WriteFile(statefulsetYaml, []byte(output), 0644)
+			err := ioutil.WriteFile(statefulsetYaml, []byte(output), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Starting the cassandra service")
@@ -311,7 +311,7 @@ var _ = framework.KubeDescribe("[Feature:Example]", func() {
 						return false, fmt.Errorf("Too many pods scheduled, expected %d got %d", numPets, len(podList.Items))
 					}
 					for _, p := range podList.Items {
-						isReady := v1.IsPodReady(&p)
+						isReady := podutil.IsPodReady(&p)
 						if p.Status.Phase != v1.PodRunning || !isReady {
 							framework.Logf("Waiting for pod %v to enter %v - Ready=True, currently %v - Ready=%v", p.Name, v1.PodRunning, p.Status.Phase, isReady)
 							return false, nil
@@ -415,7 +415,7 @@ var _ = framework.KubeDescribe("[Feature:Example]", func() {
 				for t := time.Now(); time.Since(t) < timeout; time.Sleep(framework.Poll) {
 					pod, err := c.Core().Pods(ns).Get(podName, metav1.GetOptions{})
 					framework.ExpectNoError(err, fmt.Sprintf("getting pod %s", podName))
-					stat := v1.GetExistingContainerStatus(pod.Status.ContainerStatuses, podName)
+					stat := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, podName)
 					framework.Logf("Pod: %s, restart count:%d", stat.Name, stat.RestartCount)
 					if stat.RestartCount > 0 {
 						framework.Logf("Saw %v restart, succeeded...", podName)

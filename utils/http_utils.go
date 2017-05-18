@@ -80,7 +80,6 @@ func UnmarshalResponse(r *http.Response, object interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	err = json.Unmarshal(body, object)
 	if err != nil {
 		return err

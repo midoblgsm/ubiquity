@@ -24,8 +24,8 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//pkg/registry/apps/petset:all-srcs",
         "//pkg/registry/apps/rest:all-srcs",
+        "//pkg/registry/apps/statefulset:all-srcs",
         "//pkg/registry/authentication/rest:all-srcs",
         "//pkg/registry/authentication/tokenreview:all-srcs",
         "//pkg/registry/authorization/localsubjectaccessreview:all-srcs",
@@ -73,6 +73,8 @@ filegroup(
         "//pkg/registry/policy/rest:all-srcs",
         "//pkg/registry/rbac:all-srcs",
         "//pkg/registry/registrytest:all-srcs",
+        "//pkg/registry/settings/podpreset:all-srcs",
+        "//pkg/registry/settings/rest:all-srcs",
         "//pkg/registry/storage/rest:all-srcs",
         "//pkg/registry/storage/storageclass:all-srcs",
     ],

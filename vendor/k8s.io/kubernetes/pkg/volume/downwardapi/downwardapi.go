@@ -24,7 +24,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/api/v1/resource"
 	"k8s.io/kubernetes/pkg/fieldpath"
 	utilstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -80,6 +82,14 @@ func (plugin *downwardAPIPlugin) CanSupport(spec *volume.Spec) bool {
 
 func (plugin *downwardAPIPlugin) RequiresRemount() bool {
 	return true
+}
+
+func (plugin *downwardAPIPlugin) SupportsMountOption() bool {
+	return false
+}
+
+func (plugin *downwardAPIPlugin) SupportsBulkVolumeVerification() bool {
+	return false
 }
 
 func (plugin *downwardAPIPlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, opts volume.VolumeOptions) (volume.Mounter, error) {
@@ -158,11 +168,11 @@ func (b *downwardAPIVolumeMounter) CanMount() error {
 // This function is not idempotent by design. We want the data to be refreshed periodically.
 // The internal sync interval of kubelet will drive the refresh of data.
 // TODO: Add volume specific ticker and refresh loop
-func (b *downwardAPIVolumeMounter) SetUp(fsGroup *int64) error {
+func (b *downwardAPIVolumeMounter) SetUp(fsGroup *types.UnixGroupID) error {
 	return b.SetUpAt(b.GetPath(), fsGroup)
 }
 
-func (b *downwardAPIVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
+func (b *downwardAPIVolumeMounter) SetUpAt(dir string, fsGroup *types.UnixGroupID) error {
 	glog.V(3).Infof("Setting up a downwardAPI volume %v for pod %v/%v at %v", b.volName, b.pod.Namespace, b.pod.Name, dir)
 	// Wrap EmptyDir. Here we rely on the idempotency of the wrapped plugin to avoid repeatedly mounting
 	wrapped, err := b.plugin.host.NewWrapperMounter(b.volName, wrappedVolumeSpec(), b.pod, *b.opts)
@@ -236,7 +246,7 @@ func CollectData(items []v1.DownwardAPIVolumeFile, pod *v1.Pod, host volume.Volu
 			nodeAllocatable, err := host.GetNodeAllocatable()
 			if err != nil {
 				errlist = append(errlist, err)
-			} else if values, err := fieldpath.ExtractResourceValueByContainerNameAndNodeAllocatable(fileInfo.ResourceFieldRef, pod, containerName, nodeAllocatable); err != nil {
+			} else if values, err := resource.ExtractResourceValueByContainerNameAndNodeAllocatable(api.Scheme, fileInfo.ResourceFieldRef, pod, containerName, nodeAllocatable); err != nil {
 				glog.Errorf("Unable to extract field %s: %s", fileInfo.ResourceFieldRef.Resource, err.Error())
 				errlist = append(errlist, err)
 			} else {

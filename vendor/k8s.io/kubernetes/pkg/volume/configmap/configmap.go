@@ -76,6 +76,14 @@ func (plugin *configMapPlugin) RequiresRemount() bool {
 	return true
 }
 
+func (plugin *configMapPlugin) SupportsMountOption() bool {
+	return false
+}
+
+func (plugin *configMapPlugin) SupportsBulkVolumeVerification() bool {
+	return false
+}
+
 func (plugin *configMapPlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, opts volume.VolumeOptions) (volume.Mounter, error) {
 	return &configMapVolumeMounter{
 		configMapVolume: &configMapVolume{spec.Name(), pod.UID, plugin, plugin.host.GetMounter(), plugin.host.GetWriter(), volume.MetricsNil{}},
@@ -150,11 +158,11 @@ func (b *configMapVolumeMounter) CanMount() error {
 	return nil
 }
 
-func (b *configMapVolumeMounter) SetUp(fsGroup *int64) error {
+func (b *configMapVolumeMounter) SetUp(fsGroup *types.UnixGroupID) error {
 	return b.SetUpAt(b.GetPath(), fsGroup)
 }
 
-func (b *configMapVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
+func (b *configMapVolumeMounter) SetUpAt(dir string, fsGroup *types.UnixGroupID) error {
 	glog.V(3).Infof("Setting up volume %v for pod %v at %v", b.volName, b.pod.UID, dir)
 
 	// Wrap EmptyDir, let it do the setup.

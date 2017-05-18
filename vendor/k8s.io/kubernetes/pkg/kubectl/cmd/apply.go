@@ -40,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/annotations"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
@@ -72,16 +71,16 @@ const (
 )
 
 var (
-	apply_long = templates.LongDesc(`
+	applyLong = templates.LongDesc(i18n.T(`
 		Apply a configuration to a resource by filename or stdin.
-		This resource will be created if it doesn't exist yet.
+		The resource name must be specified. This resource will be created if it doesn't exist yet.
 		To use 'apply', always create the resource initially with either 'apply' or 'create --save-config'.
 
 		JSON and YAML formats are accepted.
 
-		Alpha Disclaimer: the --prune functionality is not yet complete. Do not use unless you are aware of what the current state is. See https://issues.k8s.io/34274.`)
+		Alpha Disclaimer: the --prune functionality is not yet complete. Do not use unless you are aware of what the current state is. See https://issues.k8s.io/34274.`))
 
-	apply_example = templates.Examples(`
+	applyExample = templates.Examples(i18n.T(`
 		# Apply the configuration in pod.json to a pod.
 		kubectl apply -f ./pod.json
 
@@ -93,7 +92,7 @@ var (
 		kubectl apply --prune -f manifest.yaml -l app=nginx
 
 		# Apply the configuration in manifest.yaml and delete all the other configmaps that are not in the file.
-		kubectl apply --prune -f manifest.yaml --all --prune-whitelist=core/v1/ConfigMap`)
+		kubectl apply --prune -f manifest.yaml --all --prune-whitelist=core/v1/ConfigMap`))
 )
 
 func NewCmdApply(f cmdutil.Factory, out, errOut io.Writer) *cobra.Command {
@@ -102,8 +101,8 @@ func NewCmdApply(f cmdutil.Factory, out, errOut io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "apply -f FILENAME",
 		Short:   i18n.T("Apply a configuration to a resource by filename or stdin"),
-		Long:    apply_long,
-		Example: apply_example,
+		Long:    applyLong,
+		Example: applyExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(validateArgs(cmd, args))
 			cmdutil.CheckErr(validatePruneAll(options.Prune, cmdutil.GetFlagBool(cmd, "all"), options.Selector))
@@ -122,12 +121,17 @@ func NewCmdApply(f cmdutil.Factory, out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().DurationVar(&options.Timeout, "timeout", 0, "Only relevant during a force apply. The length of time to wait before giving up on a delete of the old resource, zero means determine a timeout from the size of the object. Any other values should contain a corresponding time unit (e.g. 1s, 2m, 3h).")
 	cmdutil.AddValidateFlags(cmd)
 	cmd.Flags().StringVarP(&options.Selector, "selector", "l", "", "Selector (label query) to filter on, supports '=', '==', and '!='.")
-	cmd.Flags().Bool("all", false, "[-all] to select all the specified resources.")
+	cmd.Flags().Bool("all", false, "select all resources in the namespace of the specified resource types.")
 	cmd.Flags().StringArray("prune-whitelist", []string{}, "Overwrite the default whitelist with <group/version/kind> for --prune")
 	cmdutil.AddDryRunFlag(cmd)
 	cmdutil.AddPrinterFlags(cmd)
 	cmdutil.AddRecordFlag(cmd)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
+
+	// apply subcommands
+	cmd.AddCommand(NewCmdApplyViewLastApplied(f, out, errOut))
+	cmd.AddCommand(NewCmdApplySetLastApplied(f, out, errOut))
+
 	return cmd
 }
 
@@ -200,7 +204,7 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 		}
 	}
 
-	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme).
+	r := resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme).
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -254,7 +258,7 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 			}
 
 			if cmdutil.ShouldRecord(cmd, info) {
-				if err := cmdutil.RecordChangeCause(info.Object, f.Command()); err != nil {
+				if err := cmdutil.RecordChangeCause(info.Object, f.Command(cmd, false)); err != nil {
 					return cmdutil.AddSourceToErr("creating", info.Source, err)
 				}
 			}
@@ -284,7 +288,7 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 			if err != nil {
 				return err
 			}
-			if _, ok := annotationMap[annotations.LastAppliedConfigAnnotation]; !ok {
+			if _, ok := annotationMap[api.LastAppliedConfigAnnotation]; !ok {
 				fmt.Fprintf(errOut, warningNoLastAppliedConfigAnnotation)
 			}
 			overwrite := cmdutil.GetFlagBool(cmd, "overwrite")
@@ -303,18 +307,22 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 				gracePeriod:   options.GracePeriod,
 			}
 
-			patchBytes, err := patcher.patch(info.Object, modified, info.Source, info.Namespace, info.Name)
+			patchBytes, patchedObject, err := patcher.patch(info.Object, modified, info.Source, info.Namespace, info.Name)
 			if err != nil {
 				return cmdutil.AddSourceToErr(fmt.Sprintf("applying patch:\n%s\nto:\n%v\nfor:", patchBytes, info), info.Source, err)
 			}
 
 			if cmdutil.ShouldRecord(cmd, info) {
-				if patch, patchType, err := cmdutil.ChangeResourcePatch(info, f.Command()); err == nil {
-					if _, err = helper.Patch(info.Namespace, info.Name, patchType, patch); err != nil {
+				if patch, patchType, err := cmdutil.ChangeResourcePatch(info, f.Command(cmd, true)); err == nil {
+					if recordedObject, err := helper.Patch(info.Namespace, info.Name, patchType, patch); err != nil {
 						glog.V(4).Infof("error recording reason: %v", err)
+					} else {
+						patchedObject = recordedObject
 					}
 				}
 			}
+
+			info.Refresh(patchedObject, true)
 
 			if uid, err := info.Mapping.UID(info.Object); err != nil {
 				return err
@@ -412,6 +420,7 @@ func getRESTMappings(mapper meta.RESTMapper, pruneResources *[]pruneResource) (n
 			{"extensions", "v1beta1", "Ingress", true},
 			{"extensions", "v1beta1", "ReplicaSet", true},
 			{"apps", "v1beta1", "StatefulSet", true},
+			{"apps", "v1beta1", "Deployment", true},
 		}
 	}
 
@@ -433,7 +442,7 @@ func getRESTMappings(mapper meta.RESTMapper, pruneResources *[]pruneResource) (n
 type pruner struct {
 	mapper        meta.RESTMapper
 	clientFunc    resource.ClientMapperFunc
-	clientsetFunc func() (*internalclientset.Clientset, error)
+	clientsetFunc func() (internalclientset.Interface, error)
 
 	visitedUids sets.String
 	selector    labels.Selector
@@ -465,7 +474,7 @@ func (p *pruner) prune(namespace string, mapping *meta.RESTMapping, shortOutput 
 		if err != nil {
 			return err
 		}
-		if _, ok := annots[annotations.LastAppliedConfigAnnotation]; !ok {
+		if _, ok := annots[api.LastAppliedConfigAnnotation]; !ok {
 			// don't prune resources not created with apply
 			continue
 		}
@@ -495,7 +504,7 @@ func (p *pruner) delete(namespace, name string, mapping *meta.RESTMapping, c res
 	return runDelete(namespace, name, mapping, c, nil, p.cascade, p.gracePeriod, p.clientsetFunc)
 }
 
-func runDelete(namespace, name string, mapping *meta.RESTMapping, c resource.RESTClient, helper *resource.Helper, cascade bool, gracePeriod int, clientsetFunc func() (*internalclientset.Clientset, error)) error {
+func runDelete(namespace, name string, mapping *meta.RESTMapping, c resource.RESTClient, helper *resource.Helper, cascade bool, gracePeriod int, clientsetFunc func() (internalclientset.Interface, error)) error {
 	if !cascade {
 		if helper == nil {
 			helper = resource.NewHelper(c, mapping)
@@ -533,7 +542,7 @@ type patcher struct {
 
 	mapping       *meta.RESTMapping
 	helper        *resource.Helper
-	clientsetFunc func() (*internalclientset.Clientset, error)
+	clientsetFunc func() (internalclientset.Interface, error)
 
 	overwrite bool
 	backOff   clockwork.Clock
@@ -544,17 +553,17 @@ type patcher struct {
 	gracePeriod int
 }
 
-func (p *patcher) patchSimple(obj runtime.Object, modified []byte, source, namespace, name string) ([]byte, error) {
+func (p *patcher) patchSimple(obj runtime.Object, modified []byte, source, namespace, name string) ([]byte, runtime.Object, error) {
 	// Serialize the current configuration of the object from the server.
 	current, err := runtime.Encode(p.encoder, obj)
 	if err != nil {
-		return nil, cmdutil.AddSourceToErr(fmt.Sprintf("serializing current configuration from:\n%v\nfor:", obj), source, err)
+		return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf("serializing current configuration from:\n%v\nfor:", obj), source, err)
 	}
 
 	// Retrieve the original configuration of the object from the annotation.
 	original, err := kubectl.GetOriginalConfiguration(p.mapping, obj)
 	if err != nil {
-		return nil, cmdutil.AddSourceToErr(fmt.Sprintf("retrieving original configuration from:\n%v\nfor:", obj), source, err)
+		return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf("retrieving original configuration from:\n%v\nfor:", obj), source, err)
 	}
 
 	// Create the versioned struct from the type defined in the restmapping
@@ -572,48 +581,48 @@ func (p *patcher) patchSimple(obj runtime.Object, modified []byte, source, names
 		patch, err = jsonmergepatch.CreateThreeWayJSONMergePatch(original, modified, current, preconditions...)
 		if err != nil {
 			if mergepatch.IsPreconditionFailed(err) {
-				return nil, fmt.Errorf("%s", "At least one of apiVersion, kind and name was changed")
+				return nil, nil, fmt.Errorf("%s", "At least one of apiVersion, kind and name was changed")
 			}
-			return nil, cmdutil.AddSourceToErr(fmt.Sprintf(createPatchErrFormat, original, modified, current), source, err)
+			return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf(createPatchErrFormat, original, modified, current), source, err)
 		}
 	case err != nil:
-		return nil, cmdutil.AddSourceToErr(fmt.Sprintf("getting instance of versioned object for %v:", p.mapping.GroupVersionKind), source, err)
+		return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf("getting instance of versioned object for %v:", p.mapping.GroupVersionKind), source, err)
 	case err == nil:
 		// Compute a three way strategic merge patch to send to server.
 		patchType = types.StrategicMergePatchType
 		patch, err = strategicpatch.CreateThreeWayMergePatch(original, modified, current, versionedObject, p.overwrite)
 		if err != nil {
-			return nil, cmdutil.AddSourceToErr(fmt.Sprintf(createPatchErrFormat, original, modified, current), source, err)
+			return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf(createPatchErrFormat, original, modified, current), source, err)
 		}
 	}
 
-	_, err = p.helper.Patch(namespace, name, patchType, patch)
-	return patch, err
+	patchedObj, err := p.helper.Patch(namespace, name, patchType, patch)
+	return patch, patchedObj, err
 }
 
-func (p *patcher) patch(current runtime.Object, modified []byte, source, namespace, name string) ([]byte, error) {
+func (p *patcher) patch(current runtime.Object, modified []byte, source, namespace, name string) ([]byte, runtime.Object, error) {
 	var getErr error
-	patchBytes, err := p.patchSimple(current, modified, source, namespace, name)
+	patchBytes, patchObject, err := p.patchSimple(current, modified, source, namespace, name)
 	for i := 1; i <= maxPatchRetry && errors.IsConflict(err); i++ {
 		if i > triesBeforeBackOff {
 			p.backOff.Sleep(backOffPeriod)
 		}
 		current, getErr = p.helper.Get(namespace, name, false)
 		if getErr != nil {
-			return nil, getErr
+			return nil, nil, getErr
 		}
-		patchBytes, err = p.patchSimple(current, modified, source, namespace, name)
+		patchBytes, patchObject, err = p.patchSimple(current, modified, source, namespace, name)
 	}
 	if err != nil && p.force {
-		patchBytes, err = p.deleteAndCreate(modified, namespace, name)
+		patchBytes, patchObject, err = p.deleteAndCreate(modified, namespace, name)
 	}
-	return patchBytes, err
+	return patchBytes, patchObject, err
 }
 
-func (p *patcher) deleteAndCreate(modified []byte, namespace, name string) ([]byte, error) {
+func (p *patcher) deleteAndCreate(modified []byte, namespace, name string) ([]byte, runtime.Object, error) {
 	err := p.delete(namespace, name)
 	if err != nil {
-		return modified, err
+		return modified, nil, err
 	}
 	err = wait.PollImmediate(kubectl.Interval, p.timeout, func() (bool, error) {
 		if _, err := p.helper.Get(namespace, name, false); !errors.IsNotFound(err) {
@@ -622,12 +631,12 @@ func (p *patcher) deleteAndCreate(modified []byte, namespace, name string) ([]by
 		return true, nil
 	})
 	if err != nil {
-		return modified, err
+		return modified, nil, err
 	}
 	versionedObject, _, err := p.decoder.Decode(modified, nil, nil)
 	if err != nil {
-		return modified, err
+		return modified, nil, err
 	}
-	_, err = p.helper.Create(namespace, true, versionedObject)
-	return modified, err
+	createdObject, err := p.helper.Create(namespace, true, versionedObject)
+	return modified, createdObject, err
 }

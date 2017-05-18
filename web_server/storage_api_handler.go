@@ -9,8 +9,8 @@ import (
 
 	"fmt"
 
-	"github.com/jinzhu/gorm"
 	"github.com/IBM/ubiquity/model"
+	"github.com/jinzhu/gorm"
 )
 
 type StorageApiHandler struct {
@@ -27,17 +27,22 @@ func NewStorageApiHandler(logger *log.Logger, backends map[resources.Backend]res
 
 func (h *StorageApiHandler) Activate() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		h.logger.Println("start")
-		for _, backend := range h.backends {
+		h.logger.Println("storage-api-handler-activate-start")
+		defer h.logger.Println("storage-api-handler-activate-end")
+		errors := ""
+		for name, backend := range h.backends {
+			h.logger.Println("Activating backend [", name, "]...")
+
 			err := backend.Activate()
 			if err != nil {
-				h.logger.Printf("Error activating %s", err.Error())
-				utils.WriteResponse(w, http.StatusInternalServerError, &resources.GenericResponse{Err: err.Error()})
-				return
+				h.logger.Printf("Error activating %s: %s", name, err.Error())
+				if errors != "" {
+					errors = errors + ","
+				}
+				errors = fmt.Sprintf("%s%s", errors, name)
 			}
 		}
-		h.logger.Println("Activate success (on server)")
-		utils.WriteResponse(w, http.StatusOK, nil)
+		utils.WriteResponse(w, http.StatusOK, errors)
 	}
 }
 

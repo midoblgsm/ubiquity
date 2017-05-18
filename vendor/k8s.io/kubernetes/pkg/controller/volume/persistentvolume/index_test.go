@@ -25,7 +25,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/api/v1"
-	storageutil "k8s.io/kubernetes/pkg/apis/storage/v1beta1/util"
+	"k8s.io/kubernetes/pkg/api/v1/ref"
 )
 
 func makePVC(size string, modfn func(*v1.PersistentVolumeClaim)) *v1.PersistentVolumeClaim {
@@ -112,24 +112,20 @@ func TestMatchVolume(t *testing.T) {
 		"successful-match-with-class": {
 			expectedMatch: "gce-pd-silver1",
 			claim: makePVC("1G", func(pvc *v1.PersistentVolumeClaim) {
-				pvc.ObjectMeta.Annotations = map[string]string{
-					storageutil.StorageClassAnnotation: "silver",
-				}
 				pvc.Spec.Selector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"should-exist": "true",
 					},
 				}
 				pvc.Spec.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+				pvc.Spec.StorageClassName = &classSilver
 			}),
 		},
 		"successful-match-with-class-and-labels": {
 			expectedMatch: "gce-pd-silver2",
 			claim: makePVC("1G", func(pvc *v1.PersistentVolumeClaim) {
-				pvc.ObjectMeta.Annotations = map[string]string{
-					storageutil.StorageClassAnnotation: "silver",
-				}
 				pvc.Spec.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+				pvc.Spec.StorageClassName = &classSilver
 			}),
 		},
 	}
@@ -542,9 +538,6 @@ func createTestVolumes() []*v1.PersistentVolume {
 				Labels: map[string]string{
 					"should-exist": "true",
 				},
-				Annotations: map[string]string{
-					storageutil.StorageClassAnnotation: "silver",
-				},
 			},
 			Spec: v1.PersistentVolumeSpec{
 				Capacity: v1.ResourceList{
@@ -556,15 +549,13 @@ func createTestVolumes() []*v1.PersistentVolume {
 				AccessModes: []v1.PersistentVolumeAccessMode{
 					v1.ReadWriteOnce,
 				},
+				StorageClassName: classSilver,
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				UID:  "gce-pd-silver2",
 				Name: "gce0024",
-				Annotations: map[string]string{
-					storageutil.StorageClassAnnotation: "silver",
-				},
 			},
 			Spec: v1.PersistentVolumeSpec{
 				Capacity: v1.ResourceList{
@@ -576,15 +567,13 @@ func createTestVolumes() []*v1.PersistentVolume {
 				AccessModes: []v1.PersistentVolumeAccessMode{
 					v1.ReadWriteOnce,
 				},
+				StorageClassName: classSilver,
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				UID:  "gce-pd-gold",
 				Name: "gce0025",
-				Annotations: map[string]string{
-					storageutil.StorageClassAnnotation: "gold",
-				},
 			},
 			Spec: v1.PersistentVolumeSpec{
 				Capacity: v1.ResourceList{
@@ -596,6 +585,7 @@ func createTestVolumes() []*v1.PersistentVolume {
 				AccessModes: []v1.PersistentVolumeAccessMode{
 					v1.ReadWriteOnce,
 				},
+				StorageClassName: classGold,
 			},
 		},
 	}
@@ -627,7 +617,7 @@ func TestFindingPreboundVolumes(t *testing.T) {
 			Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1Gi")}},
 		},
 	}
-	claimRef, err := v1.GetReference(api.Scheme, claim)
+	claimRef, err := ref.GetReference(api.Scheme, claim)
 	if err != nil {
 		t.Errorf("error getting claimRef: %v", err)
 	}
@@ -699,4 +689,13 @@ func (c byCapacity) Swap(i, j int) {
 
 func (c byCapacity) Len() int {
 	return len(c.volumes)
+}
+
+// matchStorageCapacity is a matchPredicate used to sort and find volumes
+func matchStorageCapacity(pvA, pvB *v1.PersistentVolume) bool {
+	aQty := pvA.Spec.Capacity[v1.ResourceStorage]
+	bQty := pvB.Spec.Capacity[v1.ResourceStorage]
+	aSize := aQty.Value()
+	bSize := bQty.Value()
+	return aSize <= bSize
 }

@@ -3,9 +3,9 @@ package model
 import (
 	"fmt"
 
+	"github.com/IBM/ubiquity/resources"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
-	"github.com/IBM/ubiquity/resources"
 )
 
 type Volume struct {

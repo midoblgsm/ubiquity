@@ -30,13 +30,13 @@ import (
 )
 
 func init() {
-	admission.RegisterPlugin("DenyEscalatingExec", func(config io.Reader) (admission.Interface, error) {
+	kubeapiserveradmission.Plugins.Register("DenyEscalatingExec", func(config io.Reader) (admission.Interface, error) {
 		return NewDenyEscalatingExec(), nil
 	})
 
 	// This is for legacy support of the DenyExecOnPrivileged admission controller.  Most
 	// of the time DenyEscalatingExec should be preferred.
-	admission.RegisterPlugin("DenyExecOnPrivileged", func(config io.Reader) (admission.Interface, error) {
+	kubeapiserveradmission.Plugins.Register("DenyExecOnPrivileged", func(config io.Reader) (admission.Interface, error) {
 		return NewDenyExecOnPrivileged(), nil
 	})
 }
@@ -53,7 +53,7 @@ type denyExec struct {
 	privileged bool
 }
 
-var _ = kubeapiserveradmission.WantsInternalClientSet(&denyExec{})
+var _ = kubeapiserveradmission.WantsInternalKubeClientSet(&denyExec{})
 
 // NewDenyEscalatingExec creates a new admission controller that denies an exec operation on a pod
 // using host based configurations.
@@ -128,7 +128,7 @@ func isPrivileged(pod *api.Pod) bool {
 	return false
 }
 
-func (d *denyExec) SetInternalClientSet(client internalclientset.Interface) {
+func (d *denyExec) SetInternalKubeClientSet(client internalclientset.Interface) {
 	d.client = client
 }
 

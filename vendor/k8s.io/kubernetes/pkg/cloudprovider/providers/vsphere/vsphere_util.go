@@ -43,12 +43,12 @@ func GetVSphere() (*VSphere, error) {
 func getVSphereConfig() *VSphereConfig {
 	var cfg VSphereConfig
 	cfg.Global.VCenterIP = os.Getenv("VSPHERE_VCENTER")
-	cfg.Global.VCenterPort = os.Getenv("VSPHERE_VCENTER_PORT")
 	cfg.Global.User = os.Getenv("VSPHERE_USER")
 	cfg.Global.Password = os.Getenv("VSPHERE_PASSWORD")
 	cfg.Global.Datacenter = os.Getenv("VSPHERE_DATACENTER")
 	cfg.Global.Datastore = os.Getenv("VSPHERE_DATASTORE")
 	cfg.Global.WorkingDir = os.Getenv("VSPHERE_WORKING_DIR")
+	cfg.Global.VMName = os.Getenv("VSPHERE_VM_NAME")
 	cfg.Global.InsecureFlag = false
 	if strings.ToLower(os.Getenv("VSPHERE_INSECURE")) == "true" {
 		cfg.Global.InsecureFlag = true

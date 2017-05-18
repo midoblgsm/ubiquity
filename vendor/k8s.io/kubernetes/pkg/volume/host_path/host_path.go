@@ -83,6 +83,14 @@ func (plugin *hostPathPlugin) RequiresRemount() bool {
 	return false
 }
 
+func (plugin *hostPathPlugin) SupportsMountOption() bool {
+	return false
+}
+
+func (plugin *hostPathPlugin) SupportsBulkVolumeVerification() bool {
+	return false
+}
+
 func (plugin *hostPathPlugin) GetAccessModes() []v1.PersistentVolumeAccessMode {
 	return []v1.PersistentVolumeAccessMode{
 		v1.ReadWriteOnce,
@@ -195,12 +203,12 @@ func (b *hostPathMounter) CanMount() error {
 }
 
 // SetUp does nothing.
-func (b *hostPathMounter) SetUp(fsGroup *int64) error {
+func (b *hostPathMounter) SetUp(fsGroup *types.UnixGroupID) error {
 	return nil
 }
 
 // SetUpAt does not make sense for host paths - probably programmer error.
-func (b *hostPathMounter) SetUpAt(dir string, fsGroup *int64) error {
+func (b *hostPathMounter) SetUpAt(dir string, fsGroup *types.UnixGroupID) error {
 	return fmt.Errorf("SetUpAt() does not make sense for host paths")
 }
 

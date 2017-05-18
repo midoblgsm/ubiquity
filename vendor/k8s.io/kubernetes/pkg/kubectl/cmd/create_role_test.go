@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest/fake"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 )
@@ -53,6 +53,8 @@ func TestCreateRole(t *testing.T) {
 	printer := &testRolePrinter{}
 	tf.Printer = printer
 	tf.Namespace = "test"
+	tf.Client = &fake.RESTClient{}
+	tf.ClientConfig = defaultClientConfig()
 
 	tests := map[string]struct {
 		verbs         string
@@ -72,6 +74,40 @@ func TestCreateRole(t *testing.T) {
 						Verbs:         []string{"get", "watch", "list"},
 						Resources:     []string{"pods"},
 						APIGroups:     []string{""},
+						ResourceNames: []string{},
+					},
+				},
+			},
+		},
+		"test-subresources": {
+			verbs:     "get,watch,list",
+			resources: "replicasets/scale",
+			expectedRole: &rbac.Role{
+				ObjectMeta: v1.ObjectMeta{
+					Name: roleName,
+				},
+				Rules: []rbac.PolicyRule{
+					{
+						Verbs:         []string{"get", "watch", "list"},
+						Resources:     []string{"replicasets/scale"},
+						APIGroups:     []string{"extensions"},
+						ResourceNames: []string{},
+					},
+				},
+			},
+		},
+		"test-subresources-with-apigroup": {
+			verbs:     "get,watch,list",
+			resources: "replicasets.extensions/scale",
+			expectedRole: &rbac.Role{
+				ObjectMeta: v1.ObjectMeta{
+					Name: roleName,
+				},
+				Rules: []rbac.PolicyRule{
+					{
+						Verbs:         []string{"get", "watch", "list"},
+						Resources:     []string{"replicasets/scale"},
+						APIGroups:     []string{"extensions"},
 						ResourceNames: []string{},
 					},
 				},
@@ -145,11 +181,35 @@ func TestValidate(t *testing.T) {
 			},
 			expectErr: true,
 		},
+		"test-missing-resource-existing-apigroup": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"get"},
+				Resources: []ResourceOptions{
+					{
+						Group: "extensions",
+					},
+				},
+			},
+			expectErr: true,
+		},
+		"test-missing-resource-existing-subresource": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"get"},
+				Resources: []ResourceOptions{
+					{
+						SubResource: "scale",
+					},
+				},
+			},
+			expectErr: true,
+		},
 		"test-invalid-verb": {
 			roleOptions: &CreateRoleOptions{
 				Name:  "my-role",
 				Verbs: []string{"invalid-verb"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 					},
@@ -161,9 +221,48 @@ func TestValidate(t *testing.T) {
 			roleOptions: &CreateRoleOptions{
 				Name:  "my-role",
 				Verbs: []string{"post"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
+					},
+				},
+			},
+			expectErr: true,
+		},
+		"test-special-verb": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"use"},
+				Resources: []ResourceOptions{
+					{
+						Resource: "pods",
+					},
+				},
+			},
+			expectErr: true,
+		},
+		"test-mix-verbs": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"impersonate", "use"},
+				Resources: []ResourceOptions{
+					{
+						Resource:    "userextras",
+						SubResource: "scopes",
+					},
+				},
+			},
+			expectErr: true,
+		},
+		"test-special-verb-with-wrong-apigroup": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"impersonate"},
+				Resources: []ResourceOptions{
+					{
+						Resource:    "userextras",
+						SubResource: "scopes",
+						Group:       "extensions",
 					},
 				},
 			},
@@ -173,7 +272,7 @@ func TestValidate(t *testing.T) {
 			roleOptions: &CreateRoleOptions{
 				Name:  "my-role",
 				Verbs: []string{"get"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "invalid-resource",
 					},
@@ -185,7 +284,7 @@ func TestValidate(t *testing.T) {
 			roleOptions: &CreateRoleOptions{
 				Name:  "my-role",
 				Verbs: []string{"get"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 					},
@@ -196,25 +295,55 @@ func TestValidate(t *testing.T) {
 				},
 				ResourceNames: []string{"foo"},
 			},
-			expectErr: true,
+			expectErr: false,
 		},
 		"test-valid-case": {
 			roleOptions: &CreateRoleOptions{
-				Name:  "my-role",
-				Verbs: []string{"get", "list"},
-				Resources: []schema.GroupVersionResource{
+				Name:  "role-binder",
+				Verbs: []string{"get", "list", "bind"},
+				Resources: []ResourceOptions{
 					{
-						Resource: "pods",
+						Resource: "roles",
+						Group:    "rbac.authorization.k8s.io",
 					},
 				},
 				ResourceNames: []string{"foo"},
 			},
 			expectErr: false,
 		},
+		"test-valid-case-with-subresource": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"get", "list"},
+				Resources: []ResourceOptions{
+					{
+						Resource:    "replicasets",
+						SubResource: "scale",
+					},
+				},
+				ResourceNames: []string{"bar"},
+			},
+			expectErr: false,
+		},
+		"test-valid-case-with-additional-resource": {
+			roleOptions: &CreateRoleOptions{
+				Name:  "my-role",
+				Verbs: []string{"impersonate"},
+				Resources: []ResourceOptions{
+					{
+						Resource:    "userextras",
+						SubResource: "scopes",
+						Group:       "authentication.k8s.io",
+					},
+				},
+			},
+			expectErr: false,
+		},
 	}
 
 	for name, test := range tests {
-		err := test.roleOptions.Validate(f)
+		test.roleOptions.Mapper, _ = f.Object()
+		err := test.roleOptions.Validate()
 		if test.expectErr && err != nil {
 			continue
 		}
@@ -230,6 +359,8 @@ func TestComplete(t *testing.T) {
 	f, tf, _, _ := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Namespace = "test"
+	tf.Client = &fake.RESTClient{}
+	tf.ClientConfig = defaultClientConfig()
 
 	buf := bytes.NewBuffer([]byte{})
 	cmd := NewCmdCreateRole(f, buf)
@@ -264,7 +395,7 @@ func TestComplete(t *testing.T) {
 					"watch",
 					"list",
 				},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 						Group:    "",
@@ -292,7 +423,7 @@ func TestComplete(t *testing.T) {
 			expected: &CreateRoleOptions{
 				Name:  roleName,
 				Verbs: []string{"*"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 						Group:    "",
@@ -316,7 +447,7 @@ func TestComplete(t *testing.T) {
 			expected: &CreateRoleOptions{
 				Name:  roleName,
 				Verbs: []string{"*"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 						Group:    "",
@@ -340,7 +471,7 @@ func TestComplete(t *testing.T) {
 			expected: &CreateRoleOptions{
 				Name:  roleName,
 				Verbs: []string{"*"},
-				Resources: []schema.GroupVersionResource{
+				Resources: []ResourceOptions{
 					{
 						Resource: "pods",
 						Group:    "",
@@ -357,15 +488,28 @@ func TestComplete(t *testing.T) {
 	}
 
 	for name, test := range tests {
-		err := test.roleOptions.Complete(cmd, test.params)
+		err := test.roleOptions.Complete(f, cmd, test.params)
 		if !test.expectErr && err != nil {
 			t.Errorf("%s: unexpected error: %v", name, err)
 		}
 		if test.expectErr && err != nil {
 			continue
 		}
-		if !reflect.DeepEqual(test.roleOptions, test.expected) {
-			t.Errorf("%s:\nexpected:\n%#v\nsaw:\n%#v", name, test.expected, test.roleOptions)
+
+		if test.roleOptions.Name != test.expected.Name {
+			t.Errorf("%s:\nexpected name:\n%#v\nsaw name:\n%#v", name, test.expected.Name, test.roleOptions.Name)
+		}
+
+		if !reflect.DeepEqual(test.roleOptions.Verbs, test.expected.Verbs) {
+			t.Errorf("%s:\nexpected verbs:\n%#v\nsaw verbs:\n%#v", name, test.expected.Verbs, test.roleOptions.Verbs)
+		}
+
+		if !reflect.DeepEqual(test.roleOptions.Resources, test.expected.Resources) {
+			t.Errorf("%s:\nexpected resources:\n%#v\nsaw resources:\n%#v", name, test.expected.Resources, test.roleOptions.Resources)
+		}
+
+		if !reflect.DeepEqual(test.roleOptions.ResourceNames, test.expected.ResourceNames) {
+			t.Errorf("%s:\nexpected resource names:\n%#v\nsaw resource names:\n%#v", name, test.expected.ResourceNames, test.roleOptions.ResourceNames)
 		}
 	}
 }

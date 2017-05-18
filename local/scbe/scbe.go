@@ -1,8 +1,10 @@
 package scbe
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 
 	"github.com/IBM/ubiquity/resources"
@@ -50,7 +52,10 @@ func newScbeLocalClient(logger *log.Logger, config resources.ScbeConfig, databas
 		}
 	*/
 	var datamodel ScbeDataModel
-	scbeRestClient, err := NewScbeRestClient(logger, config.ConnectionInfo)
+	transCfg := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates TODO to use
+	}
+	scbeRestClient, err := NewScbeRestClient(logger, config.ConnectionInfo, transCfg)
 	if err != nil {
 		return &scbeLocalClient{}, err
 	}

@@ -25,8 +25,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/api/v1"
+	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
+	schedulertesting "k8s.io/kubernetes/plugin/pkg/scheduler/testing"
 )
 
 type FakeNodeInfo v1.Node
@@ -70,8 +72,8 @@ func (pvs FakePersistentVolumeInfo) GetPersistentVolumeInfo(pvID string) (*v1.Pe
 }
 
 var (
-	opaqueResourceA = v1.OpaqueIntResourceName("AAA")
-	opaqueResourceB = v1.OpaqueIntResourceName("BBB")
+	opaqueResourceA = v1helper.OpaqueIntResourceName("AAA")
+	opaqueResourceB = v1helper.OpaqueIntResourceName("BBB")
 )
 
 func makeResources(milliCPU, memory, nvidiaGPUs, pods, opaqueA int64) v1.NodeResources {
@@ -116,7 +118,7 @@ func newResourceInitPod(pod *v1.Pod, usage ...schedulercache.Resource) *v1.Pod {
 }
 
 func PredicateMetadata(p *v1.Pod, nodeInfo map[string]*schedulercache.NodeInfo) interface{} {
-	pm := PredicateMetadataFactory{algorithm.FakePodLister{p}}
+	pm := PredicateMetadataFactory{schedulertesting.FakePodLister{p}}
 	return pm.GetMetadata(p, nodeInfo)
 }
 
@@ -1500,7 +1502,7 @@ func TestServiceAffinity(t *testing.T) {
 			nodeInfo.SetNode(test.node)
 			nodeInfoMap := map[string]*schedulercache.NodeInfo{test.node.Name: nodeInfo}
 			// Reimplementing the logic that the scheduler implements: Any time it makes a predicate, it registers any precomputations.
-			predicate, precompute := NewServiceAffinityPredicate(algorithm.FakePodLister(test.pods), algorithm.FakeServiceLister(test.services), FakeNodeListInfo(nodes), test.labels)
+			predicate, precompute := NewServiceAffinityPredicate(schedulertesting.FakePodLister(test.pods), schedulertesting.FakeServiceLister(test.services), FakeNodeListInfo(nodes), test.labels)
 			// Register a precomputation or Rewrite the precomputation to a no-op, depending on the state we want to test.
 			RegisterPredicatePrecomputation("checkServiceAffinity-unitTestPredicate", func(pm *predicateMetadata) {
 				if !skipPrecompute {
@@ -2572,7 +2574,7 @@ func TestInterPodAffinity(t *testing.T) {
 
 		fit := PodAffinityChecker{
 			info:      FakeNodeInfo(*node),
-			podLister: algorithm.FakePodLister(test.pods),
+			podLister: schedulertesting.FakePodLister(test.pods),
 		}
 		nodeInfo := schedulercache.NewNodeInfo(podsOnNode...)
 		nodeInfo.SetNode(test.node)
@@ -2885,6 +2887,78 @@ func TestInterPodAffinityWithMultipleNodes(t *testing.T) {
 			test:   "NodeA and nodeB have same topologyKey and label value. NodeA has an existing pod that match the inter pod affinity rule. NodeC has an existing pod that match the inter pod affinity rule. The pod can not be scheduled onto nodeA, nodeB and nodeC but can be schedulerd onto nodeD",
 			nometa: true,
 		},
+		{
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:    map[string]string{"foo": "123"},
+					Namespace: "NS1",
+				},
+				Spec: v1.PodSpec{
+					Affinity: &v1.Affinity{
+						PodAntiAffinity: &v1.PodAntiAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+								{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{
+											{
+												Key:      "foo",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{"bar"},
+											},
+										},
+									},
+									TopologyKey: "region",
+								},
+							},
+						},
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:    map[string]string{"foo": "bar"},
+						Namespace: "NS1",
+					},
+					Spec: v1.PodSpec{NodeName: "nodeA"},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Namespace: "NS2"},
+					Spec: v1.PodSpec{
+						NodeName: "nodeC",
+						Affinity: &v1.Affinity{
+							PodAntiAffinity: &v1.PodAntiAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+									{
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{
+												{
+													Key:      "foo",
+													Operator: metav1.LabelSelectorOpIn,
+													Values:   []string{"123"},
+												},
+											},
+										},
+										TopologyKey: "region",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			nodes: []v1.Node{
+				{ObjectMeta: metav1.ObjectMeta{Name: "nodeA", Labels: labelRgChina}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "nodeB", Labels: labelRgChinaAzAz1}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "nodeC", Labels: labelRgIndia}},
+			},
+			fits: map[string]bool{
+				"nodeA": false,
+				"nodeB": false,
+				"nodeC": true,
+			},
+			test: "NodeA and nodeB have same topologyKey and label value. NodeA has an existing pod that match the inter pod affinity rule. The pod can not be scheduled onto nodeA, nodeB, but can be schedulerd onto nodeC (NodeC has an existing pod that match the inter pod affinity rule but in different namespace)",
+		},
 	}
 	affinityExpectedFailureReasons := []algorithm.PredicateFailureReason{ErrPodAffinityNotMatch}
 	selectorExpectedFailureReasons := []algorithm.PredicateFailureReason{ErrNodeSelectorNotMatch}
@@ -2901,7 +2975,7 @@ func TestInterPodAffinityWithMultipleNodes(t *testing.T) {
 
 			testFit := PodAffinityChecker{
 				info:      nodeListInfo,
-				podLister: algorithm.FakePodLister(test.pods),
+				podLister: schedulertesting.FakePodLister(test.pods),
 			}
 			nodeInfo := schedulercache.NewNodeInfo(podsOnNode...)
 			nodeInfo.SetNode(&node)
@@ -2956,15 +3030,8 @@ func TestPodToleratesTaints(t *testing.T) {
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "NoSchedule"
-						}]`,
-					},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
 				},
 			},
 			fits: false,
@@ -2974,29 +3041,15 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod1",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "NoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod1:V1"}},
+					Containers:  []v1.Container{{Image: "pod1:V1"}},
+					Tolerations: []v1.Toleration{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "NoSchedule"
-						}]`,
-					},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
 				},
 			},
 			fits: true,
@@ -3006,30 +3059,15 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"operator": "Equal",
-							"value": "user2",
-							"effect": "NoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Containers:  []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "NoSchedule"
-						}]`,
-					},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
 				},
 			},
 			fits: false,
@@ -3039,29 +3077,15 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "foo",
-							"operator": "Exists",
-							"effect": "NoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Containers:  []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{{Key: "foo", Operator: "Exists", Effect: "NoSchedule"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "foo",
-							"value": "bar",
-							"effect": "NoSchedule"
-						}]`,
-					},
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}},
 				},
 			},
 			fits: true,
@@ -3071,37 +3095,20 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"operator": "Equal",
-							"value": "user2",
-							"effect": "NoSchedule"
-						}, {
-							"key": "foo",
-							"operator": "Exists",
-							"effect": "NoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{
+						{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"},
+						{Key: "foo", Operator: "Exists", Effect: "NoSchedule"},
+					},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user2",
-							"effect": "NoSchedule"
-						}, {
-							"key": "foo",
-							"value": "bar",
-							"effect": "NoSchedule"
-						}]`,
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{Key: "dedicated", Value: "user2", Effect: "NoSchedule"},
+						{Key: "foo", Value: "bar", Effect: "NoSchedule"},
 					},
 				},
 			},
@@ -3112,29 +3119,16 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "foo",
-							"operator": "Equal",
-							"value": "bar",
-							"effect": "PreferNoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Containers:  []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar", Effect: "PreferNoSchedule"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "foo",
-							"value": "bar",
-							"effect": "NoSchedule"
-						}]`,
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{Key: "foo", Value: "bar", Effect: "NoSchedule"},
 					},
 				},
 			},
@@ -3146,28 +3140,16 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "foo",
-							"operator": "Equal",
-							"value": "bar"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Containers:  []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "foo",
-							"value": "bar",
-							"effect": "NoSchedule"
-						}]`,
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{Key: "foo", Value: "bar", Effect: "NoSchedule"},
 					},
 				},
 			},
@@ -3179,29 +3161,16 @@ func TestPodToleratesTaints(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pod2",
-					Annotations: map[string]string{
-						v1.TolerationsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"operator": "Equal",
-							"value": "user2",
-							"effect": "NoSchedule"
-						}]`,
-					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{{Image: "pod2:V1"}},
+					Containers:  []v1.Container{{Image: "pod2:V1"}},
+					Tolerations: []v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}},
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "PreferNoSchedule"
-						}]`,
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"},
 					},
 				},
 			},
@@ -3219,14 +3188,9 @@ func TestPodToleratesTaints(t *testing.T) {
 				},
 			},
 			node: v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						v1.TaintsAnnotationKey: `
-						[{
-							"key": "dedicated",
-							"value": "user1",
-							"effect": "PreferNoSchedule"
-						}]`,
+				Spec: v1.NodeSpec{
+					Taints: []v1.Taint{
+						{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"},
 					},
 				},
 			},
@@ -4537,7 +4501,7 @@ func TestInterPodAffinityAnnotations(t *testing.T) {
 
 		fit := PodAffinityChecker{
 			info:      FakeNodeInfo(*node),
-			podLister: algorithm.FakePodLister(test.pods),
+			podLister: schedulertesting.FakePodLister(test.pods),
 		}
 		nodeInfo := schedulercache.NewNodeInfo(podsOnNode...)
 		nodeInfo.SetNode(test.node)
@@ -4783,7 +4747,7 @@ func TestInterPodAffinityAnnotationsWithMultipleNodes(t *testing.T) {
 
 			testFit := PodAffinityChecker{
 				info:      nodeListInfo,
-				podLister: algorithm.FakePodLister(test.pods),
+				podLister: schedulertesting.FakePodLister(test.pods),
 			}
 			nodeInfo := schedulercache.NewNodeInfo(podsOnNode...)
 			nodeInfo.SetNode(&node)
@@ -4795,7 +4759,7 @@ func TestInterPodAffinityAnnotationsWithMultipleNodes(t *testing.T) {
 			if !fits && !reflect.DeepEqual(reasons, affinityExpectedFailureReasons) {
 				t.Errorf("%s: unexpected failure reasons: %v", test.test, reasons)
 			}
-			affinity, err := v1.GetAffinityFromPodAnnotations(test.pod.ObjectMeta.Annotations)
+			affinity, err := v1helper.GetAffinityFromPodAnnotations(test.pod.ObjectMeta.Annotations)
 			if err != nil {
 				t.Errorf("%s: unexpected error: %v", test.test, err)
 			}

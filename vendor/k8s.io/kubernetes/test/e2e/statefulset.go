@@ -31,8 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/kubernetes/pkg/api/v1"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	apps "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
 
@@ -127,6 +129,90 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 			framework.ExpectNoError(sst.ExecInStatefulPods(ss, cmd))
 		})
 
+		It("should adopt matching orphans and release non-matching pods", func() {
+			By("Creating statefulset " + ssName + " in namespace " + ns)
+			*(ss.Spec.Replicas) = 1
+			framework.SetStatefulSetInitializedAnnotation(ss, "false")
+
+			// Replace ss with the one returned from Create() so it has the UID.
+			// Save Kind since it won't be populated in the returned ss.
+			kind := ss.Kind
+			ss, err := c.Apps().StatefulSets(ns).Create(ss)
+			Expect(err).NotTo(HaveOccurred())
+			ss.Kind = kind
+
+			sst := framework.NewStatefulSetTester(c)
+
+			By("Saturating stateful set " + ss.Name)
+			sst.Saturate(ss)
+			pods := sst.GetPodList(ss)
+			Expect(pods.Items).To(HaveLen(int(*ss.Spec.Replicas)))
+
+			By("Checking that stateful set pods are created with ControllerRef")
+			pod := pods.Items[0]
+			controllerRef := controller.GetControllerOf(&pod)
+			Expect(controllerRef).ToNot(BeNil())
+			Expect(controllerRef.Kind).To(Equal(ss.Kind))
+			Expect(controllerRef.Name).To(Equal(ss.Name))
+			Expect(controllerRef.UID).To(Equal(ss.UID))
+
+			By("Orphaning one of the stateful set's pods")
+			f.PodClient().Update(pod.Name, func(pod *v1.Pod) {
+				pod.OwnerReferences = nil
+			})
+
+			By("Checking that the stateful set readopts the pod")
+			Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
+				func(pod *v1.Pod) (bool, error) {
+					controllerRef := controller.GetControllerOf(pod)
+					if controllerRef == nil {
+						return false, nil
+					}
+					if controllerRef.Kind != ss.Kind || controllerRef.Name != ss.Name || controllerRef.UID != ss.UID {
+						return false, fmt.Errorf("pod has wrong controllerRef: %v", controllerRef)
+					}
+					return true, nil
+				},
+			)).To(Succeed(), "wait for pod %q to be readopted", pod.Name)
+
+			By("Removing the labels from one of the stateful set's pods")
+			prevLabels := pod.Labels
+			f.PodClient().Update(pod.Name, func(pod *v1.Pod) {
+				pod.Labels = nil
+			})
+
+			By("Checking that the stateful set releases the pod")
+			Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "released", framework.StatefulSetTimeout,
+				func(pod *v1.Pod) (bool, error) {
+					controllerRef := controller.GetControllerOf(pod)
+					if controllerRef != nil {
+						return false, nil
+					}
+					return true, nil
+				},
+			)).To(Succeed(), "wait for pod %q to be released", pod.Name)
+
+			// If we don't do this, the test leaks the Pod and PVC.
+			By("Readding labels to the stateful set's pod")
+			f.PodClient().Update(pod.Name, func(pod *v1.Pod) {
+				pod.Labels = prevLabels
+			})
+
+			By("Checking that the stateful set readopts the pod")
+			Expect(framework.WaitForPodCondition(c, pod.Namespace, pod.Name, "adopted", framework.StatefulSetTimeout,
+				func(pod *v1.Pod) (bool, error) {
+					controllerRef := controller.GetControllerOf(pod)
+					if controllerRef == nil {
+						return false, nil
+					}
+					if controllerRef.Kind != ss.Kind || controllerRef.Name != ss.Name || controllerRef.UID != ss.UID {
+						return false, fmt.Errorf("pod has wrong controllerRef: %v", controllerRef)
+					}
+					return true, nil
+				},
+			)).To(Succeed(), "wait for pod %q to be readopted", pod.Name)
+		})
+
 		It("should not deadlock when a pod's predecessor fails", func() {
 			By("Creating statefulset " + ssName + " in namespace " + ns)
 			*(ss.Spec.Replicas) = 2
@@ -217,6 +303,7 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 
 			By("Before scale up finished setting 2nd pod to be not ready by breaking readiness probe")
 			sst.BreakProbe(ss, testProbe)
+			sst.WaitForStatus(ss, 0)
 			sst.WaitForRunningAndNotReady(2, ss)
 
 			By("Continue scale operation after the 2nd pod, and scaling down to 1 replica")
@@ -228,6 +315,9 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 			expectedPodName := ss.Name + "-1"
 			expectedPod, err := f.ClientSet.Core().Pods(ns).Get(expectedPodName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the 2nd pod is removed only when it becomes running and ready")
+			sst.RestoreProbe(ss, testProbe)
 			watcher, err := f.ClientSet.Core().Pods(ns).Watch(metav1.SingleObject(
 				metav1.ObjectMeta{
 					Name:            expectedPod.Name,
@@ -235,20 +325,17 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 				},
 			))
 			Expect(err).NotTo(HaveOccurred())
-
-			By("Verifying the 2nd pod is removed only when it becomes running and ready")
-			sst.RestoreProbe(ss, testProbe)
 			_, err = watch.Until(framework.StatefulSetTimeout, watcher, func(event watch.Event) (bool, error) {
 				pod := event.Object.(*v1.Pod)
 				if event.Type == watch.Deleted && pod.Name == expectedPodName {
 					return false, fmt.Errorf("Pod %v was deleted before enter running", pod.Name)
 				}
 				framework.Logf("Observed event %v for pod %v. Phase %v, Pod is ready %v",
-					event.Type, pod.Name, pod.Status.Phase, v1.IsPodReady(pod))
+					event.Type, pod.Name, pod.Status.Phase, podutil.IsPodReady(pod))
 				if pod.Name != expectedPodName {
 					return false, nil
 				}
-				if pod.Status.Phase == v1.PodRunning && v1.IsPodReady(pod) {
+				if pod.Status.Phase == v1.PodRunning && podutil.IsPodReady(pod) {
 					return true, nil
 				}
 				return false, nil
@@ -280,6 +367,7 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 			By("Confirming that stateful set scale up will halt with unhealthy stateful pod")
 			sst.BreakProbe(ss, testProbe)
 			sst.WaitForRunningAndNotReady(*ss.Spec.Replicas, ss)
+			sst.WaitForStatus(ss, 0)
 			sst.UpdateReplicas(ss, 3)
 			sst.ConfirmStatefulPodCount(1, ss, 10*time.Second)
 
@@ -309,6 +397,7 @@ var _ = framework.KubeDescribe("StatefulSet", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			sst.BreakProbe(ss, testProbe)
+			sst.WaitForStatus(ss, 0)
 			sst.WaitForRunningAndNotReady(3, ss)
 			sst.UpdateReplicas(ss, 0)
 			sst.ConfirmStatefulPodCount(3, ss, 10*time.Second)
@@ -631,7 +720,7 @@ func (c *cockroachDBTester) name() string {
 }
 
 func (c *cockroachDBTester) cockroachDBExec(cmd, ns, podName string) string {
-	cmd = fmt.Sprintf("/cockroach/cockroach sql --host %s.cockroachdb -e \"%v\"", podName, cmd)
+	cmd = fmt.Sprintf("/cockroach/cockroach sql --insecure --host %s.cockroachdb -e \"%v\"", podName, cmd)
 	return framework.RunKubectlOrDie(fmt.Sprintf("--namespace=%v", ns), "exec", podName, "--", "/bin/sh", "-c", cmd)
 }
 
