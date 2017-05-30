@@ -13,7 +13,7 @@ import (
 )
 
 // RestClient is an interface that wrapper the http requests to provide easy REST API operations,
-//go:generate counterfeiter -o ../fakes/fake_scbe_rest_client.go . RestClient
+//go:generate counterfeiter -o ../fakes/fake_rest_client.go . RestClient
 type RestClient interface {
 	// Authenticate the server, prepare headers and save the token
 	Login() error
@@ -22,7 +22,7 @@ type RestClient interface {
 	Post(resource_url string, payload []byte, exitStatus int, v interface{}) error
 
 	// Paper the payload, send get request and check expected status response and returned parsed response
-	Get(resource_url string, params map[string]string, exitStatus int, v interface{}) error
+	Get(resource_url string, params map[string]string, exitStatus int, v interface{}) (interface{}, error)
 
 	// Paper the payload, send delete request and check expected status respon		se and returned parsed response
 	Delete(resource_url string, payload []byte, exitStatus int, v interface{}) error
@@ -191,11 +191,13 @@ func (s *restClient) Post(resource_url string, payload []byte, exitStatus int, v
 }
 
 // Get http request
-func (s *restClient) Get(resource_url string, params map[string]string, exitStatus int, v interface{}) error {
+func (s *restClient) Get(resource_url string, params map[string]string, exitStatus int, v interface{}) (interface{}, error) {
 	if exitStatus < 0 {
 		exitStatus = HTTP_SUCCEED // Default value
 	}
-	return s.genericAction("GET", resource_url, nil, params, exitStatus, v)
+	e := s.genericAction("GET", resource_url, nil, params, exitStatus, v)
+	return v, e
+
 }
 
 // Delete request
@@ -243,18 +245,33 @@ const (
 )
 
 func NewScbeRestClient(logger *log.Logger, conInfo resources.ConnectionInfo) (ScbeRestClient, error) {
+	return newScbeRestClient(logger, conInfo, nil)
+}
+
+// NewScbeRestClientWithNewRestClient for mocking during test # TODO consider to remove it to test file
+func NewScbeRestClientWithNewRestClient(logger *log.Logger, conInfo resources.ConnectionInfo, RestClient RestClient) (ScbeRestClient, error) {
+	return newScbeRestClient(logger, conInfo, RestClient)
+}
+
+func newScbeRestClient(logger *log.Logger, conInfo resources.ConnectionInfo, restClient RestClient) (ScbeRestClient, error) {
+	var client RestClient
 	// Set default SCBE port if not mentioned
 	if conInfo.Port == 0 {
 		conInfo.Port = DEFAULT_SCBE_PORT
 	}
-	// Add the default SCBE Flocker group to the credentials
+	// Add the default SCBE Flocker group to the credentials  # TODO change to ubiquity interface
 	conInfo.CredentialInfo.Group = SCBE_FLOCKER_GROUP_PARAM
-	referrer := fmt.Sprintf(URL_SCBE_REFERER, conInfo.ManagementIP, conInfo.Port)
-	baseUrl := referrer + URL_SCBE_BASE_SUFFIX
-	client := NewRestClient(logger, conInfo, baseUrl, URL_SCBE_RESOURCE_GET_AUTH, referrer)
+
+	if restClient == nil {
+		referrer := fmt.Sprintf(URL_SCBE_REFERER, conInfo.ManagementIP, conInfo.Port)
+		baseUrl := referrer + URL_SCBE_BASE_SUFFIX
+		client = NewRestClient(logger, conInfo, baseUrl, URL_SCBE_RESOURCE_GET_AUTH, referrer)
+	} else {
+		// use the given one
+		client = restClient
+	}
 	return &scbeRestClient{logger, conInfo, client}, nil
 }
-
 func (s *scbeRestClient) Login() error {
 	return s.client.Login()
 }
@@ -293,7 +310,7 @@ func (s *scbeRestClient) CreateVolume(volName string, serviceName string, size i
 	volResponse := ScbeResponseVolume{}
 	err = s.client.Post(UrlScbeResourceVolume, payloadMarshaled, HTTP_SUCCEED_POST, &volResponse)
 	if err != nil {
-		msg := fmt.Sprintf("Fail to provision volume %#v on service %s, due to error: %#v", volName, serviceName, err)
+		msg := fmt.Sprintf(MsgFailToProvisionVolumeDueToPostError, volName, serviceName, err)
 		s.logger.Printf(msg)
 		return ScbeVolumeInfo{}, fmt.Errorf(msg)
 	}
@@ -307,6 +324,7 @@ func (s *scbeRestClient) GetAllVolumes() ([]ScbeVolumeInfo, error) {
 func (s *scbeRestClient) GetVolume(wwn string) (ScbeVolumeInfo, error) {
 	return ScbeVolumeInfo{}, nil
 }
+
 func (s *scbeRestClient) DeleteVolume(wwn string) error {
 	urlToDelete := fmt.Sprintf("%s/%s", UrlScbeResourceVolume, wwn)
 	err := s.client.Delete(urlToDelete, nil, HTTP_SUCCEED_DELETED, nil)
@@ -334,7 +352,9 @@ func (s *scbeRestClient) ServiceExist(serviceName string) (exist bool, err error
 	var services []ScbeStorageService
 	services, err = s.serviceList(serviceName)
 	if err == nil {
-		return len(services) > 0, err
+		if len(services) > 0 && services[0].Name == serviceName {
+			return true, nil
+		}
 	}
 	return false, err
 }
@@ -348,10 +368,12 @@ func (s *scbeRestClient) serviceList(serviceName string) ([]ScbeStorageService, 
 		payload["name"] = serviceName
 	}
 	var services []ScbeStorageService
-	err = s.client.Get(UrlScbeResourceService, payload, -1, &services)
+	var servicesToReturn interface{}
+	servicesToReturn, err = s.client.Get(UrlScbeResourceService, payload, -1, &services)
 	if err != nil {
 		return nil, err
 	}
 
-	return services, nil
+	return servicesToReturn.([]ScbeStorageService), nil
+
 }

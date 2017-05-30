@@ -1,16 +1,17 @@
 package scbe_test
 
 import (
-	"fmt"
+	//	"fmt"
 	"github.com/IBM/ubiquity/local/scbe"
-	"github.com/IBM/ubiquity/model"
+	//	"github.com/IBM/ubiquity/model"
 	"github.com/IBM/ubiquity/resources"
-	"github.com/jinzhu/gorm"
+	//	"github.com/jinzhu/gorm"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega" // including the whole package inside the file
 	"log"
 	"os"
-	"path"
+	//	"path"
+	"fmt"
 	"strconv"
 )
 
@@ -50,7 +51,7 @@ var _ = Describe("restClient integration testing with existing SCBE instance", f
 			var services []scbe.ScbeStorageService
 			err := client.Login()
 			Expect(err).ToNot(HaveOccurred())
-			err = client.Get(scbe.UrlScbeResourceService, nil, 200, &services)
+			_, err = client.Get(scbe.UrlScbeResourceService, nil, 200, &services)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(services) > 0).To(Equal(true))
 		})
@@ -69,7 +70,8 @@ var _ = Describe("ScbeRestClient integration testing with existing SCBE instance
 	BeforeEach(func() {
 		logger = log.New(os.Stdout, "ubiquity scbe: ", log.Lshortfile|log.LstdFlags)
 		// Get environment variable for the tests
-		scbeUser, scbePassword, scbeIP, scbePort, _, err := getScbeEnvs()
+		scbeUser, scbePassword, scbeIP, scbePort, profile1, err := getScbeEnvs()
+		profile = profile1
 		if err != nil {
 			Skip(err.Error())
 		}
@@ -89,7 +91,7 @@ var _ = Describe("ScbeRestClient integration testing with existing SCBE instance
 	})
 
 	Context(".ServiceExist", func() {
-		It(fmt.Sprintf("Should succeed if %s service exist in SCBE", profile), func() {
+		FIt(fmt.Sprintf("Should succeed if %s service exist in SCBE", profile), func() {
 			err := scbeRestClient.Login()
 			Expect(err).ToNot(HaveOccurred())
 			var exist bool
@@ -100,6 +102,7 @@ var _ = Describe("ScbeRestClient integration testing with existing SCBE instance
 	})
 })
 
+/*
 var _ = Describe("ScbeRestClient volume operations integration testing with existing SCBE instance", func() {
 	var (
 		logger         *log.Logger
@@ -143,42 +146,6 @@ var _ = Describe("ScbeRestClient volume operations integration testing with exis
 	})
 })
 
-func getScbeEnvs() (scbeUser, scbePassword, scbeIP string, scbePort int, profile string, err error) {
-	scbeUser = os.Getenv("SCBE_USER")
-	scbePassword = os.Getenv("SCBE_PASSWORD")
-	scbeIP = os.Getenv("SCBE_IP")
-	scbePortStr := os.Getenv("SCBE_PORT")
-	profile = os.Getenv("SCBE_SERVICE")
-
-	var missingEnvs string
-	if scbeUser == "" {
-		missingEnvs = missingEnvs + "SCBE_USER "
-	}
-	if scbePassword == "" {
-		missingEnvs = missingEnvs + "SCBE_PASSWORD "
-	}
-	if scbeIP == "" {
-		missingEnvs = missingEnvs + "SCBE_IP "
-	}
-	if profile == "" {
-		missingEnvs = missingEnvs + "SCBE_SERVICE "
-	}
-	if scbePortStr == "" {
-		missingEnvs = missingEnvs + "SCBE_PORT "
-		scbePort = 0
-	} else {
-		scbePort, err = strconv.Atoi(scbePortStr)
-		if err != nil {
-			err = fmt.Errorf("SCBE_PORT environment must be a number")
-			return
-		}
-	}
-	if missingEnvs != "" {
-		missingEnvs = missingEnvs + "environments are empty, skip the integration test."
-		err = fmt.Errorf(missingEnvs)
-	}
-	return
-}
 
 var _ = Describe("datamodel integration testing with live DB", func() {
 	var (
@@ -247,3 +214,41 @@ var _ = Describe("datamodel integration testing with live DB", func() {
 		db.Close()
 	})
 })
+*/
+
+func getScbeEnvs() (scbeUser, scbePassword, scbeIP string, scbePort int, profile string, err error) {
+	scbeUser = os.Getenv("SCBE_USER")
+	scbePassword = os.Getenv("SCBE_PASSWORD")
+	scbeIP = os.Getenv("SCBE_IP")
+	scbePortStr := os.Getenv("SCBE_PORT")
+	profile = os.Getenv("SCBE_SERVICE")
+
+	var missingEnvs string
+	if scbeUser == "" {
+		missingEnvs = missingEnvs + "SCBE_USER "
+	}
+	if scbePassword == "" {
+		missingEnvs = missingEnvs + "SCBE_PASSWORD "
+	}
+	if scbeIP == "" {
+		missingEnvs = missingEnvs + "SCBE_IP "
+	}
+	if profile == "" {
+		missingEnvs = missingEnvs + "SCBE_SERVICE "
+	}
+	if scbePortStr == "" {
+		missingEnvs = missingEnvs + "SCBE_PORT "
+		scbePort = 0
+	} else {
+		scbePort, err = strconv.Atoi(scbePortStr)
+		if err != nil {
+			err = fmt.Errorf("SCBE_PORT environment must be a number")
+			return
+		}
+	}
+	if missingEnvs != "" {
+		missingEnvs = missingEnvs + "environments are empty, skip the integration test."
+		err = fmt.Errorf(missingEnvs)
+	}
+	return
+}

@@ -31,7 +31,7 @@ type FakeRestClient struct {
 	postReturnsOnCall map[int]struct {
 		result1 error
 	}
-	GetStub        func(resource_url string, params map[string]string, exitStatus int, v interface{}) error
+	GetStub        func(resource_url string, params map[string]string, exitStatus int, v interface{}) (interface{}, error)
 	getMutex       sync.RWMutex
 	getArgsForCall []struct {
 		resource_url string
@@ -40,10 +40,12 @@ type FakeRestClient struct {
 		v            interface{}
 	}
 	getReturns struct {
-		result1 error
+		result1 interface{}
+		result2 error
 	}
 	getReturnsOnCall map[int]struct {
-		result1 error
+		result1 interface{}
+		result2 error
 	}
 	DeleteStub        func(resource_url string, payload []byte, exitStatus int, v interface{}) error
 	deleteMutex       sync.RWMutex
@@ -159,7 +161,7 @@ func (fake *FakeRestClient) PostReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakeRestClient) Get(resource_url string, params map[string]string, exitStatus int, v interface{}) error {
+func (fake *FakeRestClient) Get(resource_url string, params map[string]string, exitStatus int, v interface{}) (interface{}, error) {
 	fake.getMutex.Lock()
 	ret, specificReturn := fake.getReturnsOnCall[len(fake.getArgsForCall)]
 	fake.getArgsForCall = append(fake.getArgsForCall, struct {
@@ -174,9 +176,9 @@ func (fake *FakeRestClient) Get(resource_url string, params map[string]string, e
 		return fake.GetStub(resource_url, params, exitStatus, v)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fake.getReturns.result1
+	return fake.getReturns.result1, fake.getReturns.result2
 }
 
 func (fake *FakeRestClient) GetCallCount() int {
@@ -191,23 +193,26 @@ func (fake *FakeRestClient) GetArgsForCall(i int) (string, map[string]string, in
 	return fake.getArgsForCall[i].resource_url, fake.getArgsForCall[i].params, fake.getArgsForCall[i].exitStatus, fake.getArgsForCall[i].v
 }
 
-func (fake *FakeRestClient) GetReturns(result1 error) {
+func (fake *FakeRestClient) GetReturns(result1 interface{}, result2 error) {
 	fake.GetStub = nil
 	fake.getReturns = struct {
-		result1 error
-	}{result1}
+		result1 interface{}
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeRestClient) GetReturnsOnCall(i int, result1 error) {
+func (fake *FakeRestClient) GetReturnsOnCall(i int, result1 interface{}, result2 error) {
 	fake.GetStub = nil
 	if fake.getReturnsOnCall == nil {
 		fake.getReturnsOnCall = make(map[int]struct {
-			result1 error
+			result1 interface{}
+			result2 error
 		})
 	}
 	fake.getReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
+		result1 interface{}
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeRestClient) Delete(resource_url string, payload []byte, exitStatus int, v interface{}) error {

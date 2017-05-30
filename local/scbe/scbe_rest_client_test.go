@@ -2,6 +2,8 @@ package scbe_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/IBM/ubiquity/fakes"
 	"github.com/IBM/ubiquity/local/scbe"
 	"github.com/IBM/ubiquity/resources"
 	"github.com/jarcoal/httpmock"
@@ -20,6 +22,7 @@ const (
 	fakeScbeUrlAuthFull = fakeScbeUrlBase + "/" + suffix + "/" + fakeScbeUrlAuth
 	fakeScbeUrlReferer  = fakeScbeUrlBase + "/"
 	fakeScbeUrlApi      = fakeScbeUrlBase + "/" + suffix
+	fakeProfileName     = "fake_profile"
 )
 
 var fakeServiceJsonResponse string = `
@@ -126,7 +129,7 @@ var _ = Describe("restClient", func() {
 				httpmock.NewStringResponder(http.StatusOK, fakeServiceJsonResponse),
 			)
 			var services []scbe.ScbeStorageService
-			err = client.Get(scbe.UrlScbeResourceService, nil, -1, &services)
+			_, err = client.Get(scbe.UrlScbeResourceService, nil, -1, &services)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(services[0].Name).To(Equal("gold"))
 		})
@@ -137,7 +140,7 @@ var _ = Describe("restClient", func() {
 				httpmock.NewStringResponder(http.StatusBadRequest, fakeServiceJsonResponse),
 			)
 			var services []scbe.ScbeStorageService
-			err = client.Get(scbe.UrlScbeResourceService, nil, -1, &services)
+			_, err = client.Get(scbe.UrlScbeResourceService, nil, -1, &services)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(MatchRegexp("^Error, bad status code"))
 		})
@@ -151,7 +154,7 @@ var _ = Describe("restClient", func() {
 			httpmock.RegisterResponder("GET", fakeScbeUrlApi+"/"+scbe.UrlScbeResourceService,
 				TokenExpiredResponder(&numGetServices))
 			var services []scbe.ScbeStorageService
-			err = client.Get(scbe.UrlScbeResourceService, nil, http.StatusOK, &services)
+			_, err = client.Get(scbe.UrlScbeResourceService, nil, http.StatusOK, &services)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(numLogin).To(Equal(1))
 			Expect(numGetServices).To(Equal(2))
@@ -159,35 +162,101 @@ var _ = Describe("restClient", func() {
 	})
 })
 
-/*
 var _ = Describe("ScbeRestClient", func() {
 	var (
-		logger *log.Logger
-		client scbe.RestClient
-		err    error
+		logger         *log.Logger
+		scbeRestClient scbe.ScbeRestClient
+		fakeRestClient *fakes.FakeRestClient
+		err            error
 	)
 	BeforeEach(func() {
 		logger = log.New(os.Stdout, "ubiquity scbe: ", log.Lshortfile|log.LstdFlags)
+		fakeRestClient = new(fakes.FakeRestClient)
 		credentialInfo := resources.CredentialInfo{"user", "password", "flocker"}
 		conInfo := resources.ConnectionInfo{credentialInfo, 8440, "ip", true}
-		scbeRestClient, err := scbe.NewScbeRestClient(logger, conInfo)
-				Expect(err).ToNot(HaveOccurred())
-				httpmock.RegisterResponder(
-					"POST",
-					scbeRestClient.,
-					httpmock.NewStringResponder(http.StatusOK, string(marshalledResponse)),
-				)
-				err = client.Login()
-				Expect(err).ToNot(HaveOccurred())
+
+		scbeRestClient, err = scbe.NewScbeRestClientWithNewRestClient(
+			logger,
+			conInfo,
+			fakeRestClient,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		fakeRestClient.LoginReturns(nil) // Fake the login to SCBE
+
 	})
 
 	Context(".Get", func() {
-		It("should succeed when Get succeed and return an expacted struct back", func() {
-			logger.Printf("aaa")
+		It("should fail to check if service exist when return err", func() {
+			fakeRestClient.GetReturns(nil, fmt.Errorf("error"))
+			exist, err := scbeRestClient.ServiceExist(fakeProfileName)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("error"))
+			Expect(exist).To(Equal(false))
 		})
+		It("should fail when service doesn't exist", func() {
+			services := make([]scbe.ScbeStorageService, 1)
+			services[0].Name = fakeProfileName
+			services[0].Id = "666"
+
+			fakeRestClient.GetReturns(services, nil)
+			exist, err := scbeRestClient.ServiceExist("fake_profile_NOT_EXIST")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exist).To(Equal(false))
+		})
+		It("should succeed to check if service exist", func() {
+			services := make([]scbe.ScbeStorageService, 1)
+			services[0].Name = fakeProfileName
+			services[0].Id = "666"
+
+			fakeRestClient.GetReturns(services, nil)
+			exist, err := scbeRestClient.ServiceExist(fakeProfileName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exist).To(Equal(true))
+		})
+		It("should fail to create vol when service list fail", func() {
+			fakeRestClient.GetReturns(nil, fmt.Errorf("error"))
+			_, err := scbeRestClient.CreateVolume("fakevol", fakeProfileName, 10)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("error"))
+		})
+		It("should fail to create vol when service list return service name you did not expect", func() {
+			services := make([]scbe.ScbeStorageService, 1)
+			services[0].Name = fakeProfileName
+			services[0].Id = "666"
+
+			fakeRestClient.GetReturns(services, nil)
+			_, err := scbeRestClient.CreateVolume("fakevol", "fake_profile_NOT_EXIST", 10)
+			Expect(err).To(HaveOccurred())
+		})
+		It("should fail to create vol when post fail", func() {
+			services := make([]scbe.ScbeStorageService, 1)
+			services[0].Name = fakeProfileName
+			services[0].Id = "666'"
+
+			fakeRestClient.GetReturns(services, nil)
+			fakeRestClient.PostReturns(fmt.Errorf("error666"))
+			_, err := scbeRestClient.CreateVolume("fakevol", fakeProfileName, 10)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(MatchRegexp("error666"))
+		})
+		It("should succeed to create vol and return ScbeVolumeInfo object", func() {
+			Skip("TBD")
+			services := make([]scbe.ScbeStorageService, 1)
+			services[0].Name = fakeProfileName
+			services[0].Id = "666'"
+
+			fakeRestClient.GetReturns(services, nil)
+			fakeRestClient.PostReturns(nil)
+			scbeVolumeInfo, err := scbeRestClient.CreateVolume("fakevol", fakeProfileName, 10)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scbeVolumeInfo.Name).To(Equal("fakevol"))
+			Expect(scbeVolumeInfo.Wwn).To(Equal("www1"))
+			Expect(scbeVolumeInfo.ServiceName).To(Equal(fakeProfileName))
+		})
+
 	})
 })
-*/
+
 func CountLoginResponder(num *int, loginResp string) httpmock.Responder {
 	*num = 0
 	return func(req *http.Request) (*http.Response, error) {
