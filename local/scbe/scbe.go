@@ -8,6 +8,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"strconv"
 	"sync"
+	"encoding/json"
 )
 
 type scbeLocalClient struct {
@@ -25,10 +26,6 @@ const (
 	volumeNamePrefix         = "u_"
 	AttachedToNothing        = "" // during provisioning the volume is not attached to any host
 	EmptyHost                = ""
-
-	VolConfigKeyWWN      = "wwn"
-	VolConfigKeyID       = "id"
-	VolConfigKeyVolumeID = "volume_id"
 	ComposeVolumeName    = volumeNamePrefix + "%s_%s" // e.g u_instance1_volName
 	MaxVolumeNameLength  = 63                         // IBM block storage max volume name cannot exceed this length
 )
@@ -218,23 +215,43 @@ func (s *scbeLocalClient) GetVolume(name string) (resources.Volume, error) {
 func (s *scbeLocalClient) GetVolumeConfig(name string) (map[string]interface{}, error) {
 	defer s.logger.Trace(logutil.DEBUG)()
 
-	scbeVolume, volExists, err := s.dataModel.GetVolume(name)
+	// get volume wwn from name
+	volume, volExists, err := s.dataModel.GetVolume(name)
 	if err != nil {
 		return nil, s.logger.ErrorRet(err, "dataModel.GetVolume failed")
 	}
 
+	// verify volume exists
 	if !volExists {
 		return nil, s.logger.ErrorRet(errors.New("Volume not found"), "failed")
 	}
 
-	volumeConfigDetails := make(map[string]interface{})
-	volumeConfigDetails[VolConfigKeyWWN] = scbeVolume.WWN
-	volumeConfigDetails[VolConfigKeyID] = scbeVolume.ID
-	volumeConfigDetails[VolConfigKeyVolumeID] = scbeVolume.VolumeID
+	// get volume full info from scbe
+	volumeInfo, err := s.scbeRestClient.GetVolumes(volume.WWN)
+	if err != nil {
+		return nil, s.logger.ErrorRet(err, "scbeRestClient.GetVolumes failed")
+	}
 
-	return volumeConfigDetails, nil
+	// verify volume is found
+	if len(volumeInfo) != 1 {
+		return nil, s.logger.ErrorRet(&volumeNotFoundError{name}, "failed", logutil.Args{{"volumeInfo", volumeInfo}})
+	}
 
+	// serialize scbeVolumeInfo to json
+	jsonData, err := json.Marshal(volumeInfo[0])
+	if err != nil {
+		return nil, s.logger.ErrorRet(err, "json.Marshal failed")
+	}
+
+	// convert json to map[string]interface{}
+	var volConfig map[string]interface{}
+	if err = json.Unmarshal(jsonData, &volConfig); err != nil {
+		return nil, s.logger.ErrorRet(err, "json.Unmarshal failed")
+	}
+
+	return volConfig, nil
 }
+
 func (s *scbeLocalClient) Attach(name string) (string, error) {
 	defer s.logger.Trace(logutil.DEBUG)()
 	host2attach := s.config.HostnameTmp // TODO this is workaround for issue #23 (remove it when #23 will be fixed and use the host that will be given as argument to the interface)
