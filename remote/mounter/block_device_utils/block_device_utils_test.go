@@ -11,6 +11,7 @@ import (
     "errors"
     "fmt"
     "io/ioutil"
+    "path"
 )
 
 var _ = Describe("block_device_utils_test", func() {
@@ -245,14 +246,24 @@ var _ = Describe("block_device_utils_test", func() {
     })
     Context(".MountFs", func() {
         It("MountFs succeeds", func() {
-            mpath := "mpath"
-            mpoint := "mpoint"
+            mpath := "/dev/mpath"
+            mpoint := "/some/mpoint"
+            mountDir := "/var/run/ubiquity/" + path.Base(mpoint)
+            bindDir := mountDir + "/ub_root"
             err = bdUtils.MountFs(mpath, mpoint)
             Expect(err).To(Not(HaveOccurred()))
-            Expect(fakeExec.ExecuteCallCount()).To(Equal(1))
+            Expect(fakeExec.ExecuteCallCount()).To(Equal(2))
             cmd, args := fakeExec.ExecuteArgsForCall(0)
             Expect(cmd).To(Equal("sudo"))
-            Expect(args).To(Equal([]string{"mount", mpath, mpoint}))
+            Expect(args).To(Equal([]string{"mount", mpath, mountDir}))
+            cmd, args = fakeExec.ExecuteArgsForCall(1)
+            Expect(cmd).To(Equal("sudo"))
+            Expect(args).To(Equal([]string{"mount", "--bind", bindDir, mpoint}))
+            Expect(fakeExec.MkdirAllCallCount()).To(Equal(2))
+            dir, _ := fakeExec.MkdirAllArgsForCall(0)
+            Expect(dir).To(Equal(mountDir))
+            dir, _ = fakeExec.MkdirAllArgsForCall(1)
+            Expect(dir).To(Equal(bindDir))
         })
         It("MountFs fails if mount command missing", func() {
             mpath := "mpath"
@@ -270,17 +281,20 @@ var _ = Describe("block_device_utils_test", func() {
             Expect(err).To(HaveOccurred())
             Expect(err.Error()).To(MatchRegexp(cmdErr.Error()))
         })
-
     })
     Context(".UmountFs", func() {
         It("UmountFs succeeds", func() {
             mpoint := "mpoint"
             err = bdUtils.UmountFs(mpoint)
             Expect(err).To(Not(HaveOccurred()))
-            Expect(fakeExec.ExecuteCallCount()).To(Equal(1))
+            Expect(fakeExec.ExecuteCallCount()).To(Equal(2))
             cmd, args := fakeExec.ExecuteArgsForCall(0)
             Expect(cmd).To(Equal("sudo"))
             Expect(args).To(Equal([]string{"umount", mpoint}))
+            cmd, args = fakeExec.ExecuteArgsForCall(1)
+            Expect(cmd).To(Equal("sudo"))
+            Expect(args).To(Equal([]string{"umount", mpoint}))
+
         })
         It("UmountFs fails if umount command missing", func() {
             mpoint := "mpoint"
