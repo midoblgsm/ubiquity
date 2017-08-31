@@ -18,11 +18,11 @@ package scbe
 
 import (
 	"fmt"
-	"github.com/IBM/ubiquity/model"
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils/logs"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/midoblgsm/ubiquity/model"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 )
 
 //go:generate counterfeiter -o ../../fakes/fake_ScbeDataModel.go . ScbeDataModel

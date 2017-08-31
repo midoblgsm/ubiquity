@@ -19,9 +19,9 @@ package scbe_test
 import (
 	"errors"
 	"fmt"
-	"github.com/IBM/ubiquity/fakes"
-	"github.com/IBM/ubiquity/local/scbe"
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/fakes"
+	"github.com/midoblgsm/ubiquity/local/scbe"
+	"github.com/midoblgsm/ubiquity/resources"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"reflect"
@@ -250,32 +250,32 @@ var _ = Describe("scbeLocalClient", func() {
 		It("should fail create volume if error to get vol from DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
 			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: nil}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			Expect(createVolumeResponse.Error).To(MatchError(fakeErr))
 		})
 		It("should fail create volume if volume already exist in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, true, nil)
 			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: nil}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
 		})
 		It("should fail create volume if vol size is not number", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			opts := make(map[string]interface{})
 			opts[scbe.OptionNameForVolumeSize] = "aaa"
 			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
 		})
 		It("should fail create volume if vol size is not number", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			opts := make(map[string]interface{})
 			opts[resources.OptionNameForVolumeFsType] = "bad-fs-type"
 			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			_, ok := err.(*scbe.FsTypeNotSupportedError)
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			_, ok := createVolumeResponse.Error.(*scbe.FsTypeNotSupportedError)
 			Expect(ok).To(Equal(true))
 		})
 
@@ -286,9 +286,9 @@ var _ = Describe("scbeLocalClient", func() {
 			maxVolNameCapable := scbe.MaxVolumeNameLength - (len(fakeConfig.UbiquityInstanceName) + 3)
 			volname := strings.Repeat("x", maxVolNameCapable+1)
 			req := resources.CreateVolumeRequest{Name: volname, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			_, ok := err.(*scbe.VolumeNameExceededMaxLengthError)
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			_, ok := createVolumeResponse.Error.(*scbe.VolumeNameExceededMaxLengthError)
 			Expect(ok).To(Equal(true))
 
 		})
@@ -302,11 +302,11 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volName := strings.Repeat("x", maxVolNameCapable)
 			req := resources.CreateVolumeRequest{Name: volName, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			_, ok := err.(*scbe.VolumeNameExceededMaxLengthError)
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			_, ok := createVolumeResponse.Error.(*scbe.VolumeNameExceededMaxLengthError)
 			Expect(ok).To(Equal(false))
-			Expect(err.Error()).To(Equal("error"))
+			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
 
 		})
 
@@ -318,9 +318,9 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("error"))
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
 			Expect(fakeScbeRestClient.CreateVolumeCallCount()).To(Equal(1))
 			volname, profile, size := fakeScbeRestClient.CreateVolumeArgsForCall(0)
 			Expect(profile).To(Equal(fakeDefaultProfile))
@@ -337,9 +337,9 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("error"))
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
 			Expect(fakeScbeRestClient.CreateVolumeCallCount()).To(Equal(1))
 			volname, profile, size := fakeScbeRestClient.CreateVolumeArgsForCall(0)
 			Expect(profile).To(Equal("gold"))
@@ -359,9 +359,9 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("error"))
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).To(HaveOccurred())
+			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
 			name, wwn, host, fstype := fakeScbeDataModel.InsertVolumeArgsForCall(0)
 			Expect(name).To(Equal(volFake))
@@ -380,8 +380,8 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).NotTo(HaveOccurred())
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
 			name, wwn, host, fstype := fakeScbeDataModel.InsertVolumeArgsForCall(0)
 			Expect(name).To(Equal(volFake))
@@ -399,8 +399,8 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).NotTo(HaveOccurred())
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
 			name, wwn, host, fstype := fakeScbeDataModel.InsertVolumeArgsForCall(0)
 			Expect(name).To(Equal(volFake))
@@ -418,8 +418,8 @@ var _ = Describe("scbeLocalClient", func() {
 
 			volFake := "fakevol"
 			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
-			err = client.CreateVolume(req)
-			Expect(err).NotTo(HaveOccurred())
+			createVolumeResponse := client.CreateVolume(req)
+			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
 			name, wwn, host, fstype := fakeScbeDataModel.InsertVolumeArgsForCall(0)
 			Expect(name).To(Equal(volFake))
@@ -460,49 +460,49 @@ var _ = Describe("scbeLocalClient", func() {
 
 	Context(".Attach", func() {
 		It("should fail to attach request is bad", func() {
-			_, err := client.Attach(resources.AttachRequest{Name: "AAA", Host: scbe.EmptyHost})
-			Expect(err).To(HaveOccurred())
-			_, ok := err.(*scbe.InValidRequestError)
+			attachResponse := client.Attach(resources.AttachRequest{Name: "AAA", Host: scbe.EmptyHost})
+			Expect(attachResponse.Error).To(HaveOccurred())
+			_, ok := attachResponse.Error.(*scbe.InValidRequestError)
 			Expect(ok).To(Equal(true))
-			_, err = client.Attach(resources.AttachRequest{Name: "", Host: fakeHost})
-			Expect(err).To(HaveOccurred())
-			_, ok = err.(*scbe.InValidRequestError)
+			attachResponse = client.Attach(resources.AttachRequest{Name: "", Host: fakeHost})
+			Expect(attachResponse.Error).To(HaveOccurred())
+			_, ok = attachResponse.Error.(*scbe.InValidRequestError)
 			Expect(ok).To(Equal(true))
 		})
 
 		It("should fail to attach the volume if GetVolume failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).To(HaveOccurred())
+			Expect(attachResponse.Error).To(MatchError(fakeErr))
 		})
 		It("should fail to attach the volume if vol not exist in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(
 				scbe.ScbeVolume{}, false, nil)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).To(HaveOccurred())
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).To(HaveOccurred())
 		})
 		It("should fail to attach the volume if vol already attached in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(
 				scbe.ScbeVolume{AttachTo: fakeHost2}, true, nil)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).To(HaveOccurred())
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).To(HaveOccurred())
 		})
 		It("should fail to attach the volume if MapVolume failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{AttachTo: ""}, true, nil)
 			fakeScbeRestClient.MapVolumeReturns(scbe.ScbeResponseMapping{}, fakeErr)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).To(HaveOccurred())
+			Expect(attachResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeRestClient.MapVolumeCallCount()).To(Equal(1))
 		})
 		It("should fail to attach the volume if update the vol in the DB failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{AttachTo: ""}, true, nil)
 			fakeScbeRestClient.MapVolumeReturns(scbe.ScbeResponseMapping{}, nil)
 			fakeScbeDataModel.UpdateVolumeAttachToReturns(fakeErr)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).To(HaveOccurred())
+			Expect(attachResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeDataModel.UpdateVolumeAttachToCallCount()).To(Equal(1))
 		})
 		It("should succeed to attach the volume when everything is cool", func() {
@@ -510,15 +510,15 @@ var _ = Describe("scbeLocalClient", func() {
 				scbe.ScbeVolume{AttachTo: ""}, true, nil)
 			fakeScbeRestClient.MapVolumeReturns(scbe.ScbeResponseMapping{}, nil)
 			fakeScbeDataModel.UpdateVolumeAttachToReturns(nil)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).NotTo(HaveOccurred())
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.UpdateVolumeAttachToCallCount()).To(Equal(1))
 		})
 		It("should succeed to attach the volume if vol already attach to this host", func() {
 			fakeScbeDataModel.GetVolumeReturns(
 				scbe.ScbeVolume{AttachTo: fakeHost}, true, nil)
-			_, err := client.Attach(fakeAttachRequest)
-			Expect(err).NotTo(HaveOccurred())
+			attachResponse := client.Attach(fakeAttachRequest)
+			Expect(attachResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.UpdateVolumeAttachToCallCount()).To(Equal(0))
 		})
 
@@ -526,36 +526,36 @@ var _ = Describe("scbeLocalClient", func() {
 	Context(".Detach", func() {
 		It("should fail to detach the volume if GetVolume failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).To(HaveOccurred())
+			Expect(detachResponse.Error).To(MatchError(fakeErr))
 		})
 		It("should fail to detach the volume if vol not exist in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).To(HaveOccurred())
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).To(HaveOccurred())
 		})
 		It("should fail to detach the volume if vol already detached in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(
 				scbe.ScbeVolume{AttachTo: scbe.EmptyHost}, true, nil)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).To(HaveOccurred())
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).To(HaveOccurred())
 		})
 		It("should fail to detach the volume if MapVolume failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{AttachTo: fakeHost}, true, nil)
 			fakeScbeRestClient.UnmapVolumeReturns(fakeErr)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).To(HaveOccurred())
+			Expect(detachResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeRestClient.UnmapVolumeCallCount()).To(Equal(1))
 		})
 		It("should fail to detach the volume if update the vol in the DB failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{AttachTo: fakeHost}, true, nil)
 			fakeScbeRestClient.UnmapVolumeReturns(nil)
 			fakeScbeDataModel.UpdateVolumeAttachToReturns(fakeErr)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).To(HaveOccurred())
+			Expect(detachResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeDataModel.UpdateVolumeAttachToCallCount()).To(Equal(1))
 		})
 		It("should succeed to detach the volume when everything is cool", func() {
@@ -563,8 +563,8 @@ var _ = Describe("scbeLocalClient", func() {
 				scbe.ScbeVolume{AttachTo: fakeHost}, true, nil)
 			fakeScbeRestClient.UnmapVolumeReturns(nil)
 			fakeScbeDataModel.UpdateVolumeAttachToReturns(nil)
-			err := client.Detach(fakeDetachRequest)
-			Expect(err).NotTo(HaveOccurred())
+			detachResponse := client.Detach(fakeDetachRequest)
+			Expect(detachResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.UpdateVolumeAttachToCallCount()).To(Equal(1))
 		})
 
@@ -579,14 +579,14 @@ var _ = Describe("scbeLocalClient", func() {
 			}
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{WWN: "wwn", FSType: "ext4"}, true, nil)
 			fakeScbeRestClient.GetVolumesReturns(volumes, nil)
-			volConfig, err := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
-			Expect(err).To(Not(HaveOccurred()))
-			Expect(len(volConfig)).To(Equal(val.Type().NumField() + scbe.GetVolumeConfigExtraParams))
-			fstype, ok := volConfig[resources.OptionNameForVolumeFsType]
+			getVolumeConfigResponse := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
+			Expect(getVolumeConfigResponse.Error).To(Not(HaveOccurred()))
+			Expect(len(getVolumeConfigResponse.VolumeConfig)).To(Equal(val.Type().NumField() + scbe.GetVolumeConfigExtraParams))
+			fstype, ok := getVolumeConfigResponse.VolumeConfig[resources.OptionNameForVolumeFsType]
 			Expect(ok).To(Equal(true))
 			Expect(fstype).To(Equal("ext4"))
 
-			for k, v := range volConfig {
+			for k, v := range getVolumeConfigResponse.VolumeConfig {
 				if k == resources.OptionNameForVolumeFsType {
 					continue
 				}
@@ -596,48 +596,48 @@ var _ = Describe("scbeLocalClient", func() {
 		})
 		It("fail upon GetVolume error", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
-			_, err := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			getVolumeConfigResponse := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
+			Expect(getVolumeConfigResponse.Error).To(HaveOccurred())
+			Expect(getVolumeConfigResponse.Error).To(MatchError(fakeErr))
 		})
 		It("fail if GetVolume returns false", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{WWN: "wwn"}, false, nil)
-			_, err := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
-			Expect(err).To(HaveOccurred())
+			getVolumeConfigResponse := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
+			Expect(getVolumeConfigResponse.Error).To(HaveOccurred())
 		})
 		It("fail upon GetVolumes error", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{WWN: "wwn"}, true, nil)
 			fakeScbeRestClient.GetVolumesReturns(nil, fakeErr)
-			_, err := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			getVolumeConfigResponse := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
+			Expect(getVolumeConfigResponse.Error).To(HaveOccurred())
+			Expect(getVolumeConfigResponse.Error).To(MatchError(fakeErr))
 		})
 		It("fail if GetVolumes returned 0 volumes", func() {
 			volumes := make([]scbe.ScbeVolumeInfo, 0)
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{WWN: "wwn"}, true, nil)
 			fakeScbeRestClient.GetVolumesReturns(volumes, nil)
-			_, err := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
-			Expect(err).To(HaveOccurred())
+			getVolumeConfigResponse := client.GetVolumeConfig(resources.GetVolumeConfigRequest{"name"})
+			Expect(getVolumeConfigResponse.Error).To(HaveOccurred())
 		})
 	})
 	Context(".Remove", func() {
 		It("should fail to remove the volume if GetVolume failed", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).To(HaveOccurred())
+			Expect(removeVolumeResponse.Error).To(MatchError(fakeErr))
 		})
 		It("should fail to detach the volume if vol not exist in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).To(HaveOccurred())
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).To(HaveOccurred())
 		})
 		It("should fail to remove the volume if vol already attached in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(
 				scbe.ScbeVolume{AttachTo: fakeHost}, true, nil)
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).To(HaveOccurred())
-			_, ok := err.(*scbe.CannotDeleteVolWhichAttachedToHostError)
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).To(HaveOccurred())
+			_, ok := removeVolumeResponse.Error.(*scbe.CannotDeleteVolWhichAttachedToHostError)
 			Expect(ok).To(Equal(true))
 		})
 		It("should fail to remove the volume if fail to delete vol from system", func() {
@@ -645,9 +645,9 @@ var _ = Describe("scbeLocalClient", func() {
 				scbe.ScbeVolume{AttachTo: scbe.EmptyHost}, true, nil)
 			fakeScbeRestClient.DeleteVolumeReturns(fakeErr)
 
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).To(HaveOccurred())
+			Expect(removeVolumeResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeRestClient.DeleteVolumeCallCount()).To(Equal(1))
 		})
 		It("should fail to remove the volume if fail to delete from DB", func() {
@@ -655,9 +655,9 @@ var _ = Describe("scbeLocalClient", func() {
 				scbe.ScbeVolume{AttachTo: scbe.EmptyHost}, true, nil)
 			fakeScbeRestClient.DeleteVolumeReturns(nil)
 			fakeScbeDataModel.DeleteVolumeReturns(fakeErr)
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(fakeErr))
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).To(HaveOccurred())
+			Expect(removeVolumeResponse.Error).To(MatchError(fakeErr))
 			Expect(fakeScbeRestClient.DeleteVolumeCallCount()).To(Equal(1))
 			Expect(fakeScbeDataModel.DeleteVolumeCallCount()).To(Equal(1))
 		})
@@ -666,8 +666,8 @@ var _ = Describe("scbeLocalClient", func() {
 				scbe.ScbeVolume{AttachTo: scbe.EmptyHost}, true, nil)
 			fakeScbeRestClient.DeleteVolumeReturns(nil)
 			fakeScbeDataModel.DeleteVolumeReturns(nil)
-			err := client.RemoveVolume(fakeRemoveRequest)
-			Expect(err).NotTo(HaveOccurred())
+			removeVolumeResponse := client.RemoveVolume(fakeRemoveRequest)
+			Expect(removeVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeRestClient.DeleteVolumeCallCount()).To(Equal(1))
 			Expect(fakeScbeDataModel.DeleteVolumeCallCount()).To(Equal(1))
 		})

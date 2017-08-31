@@ -18,7 +18,7 @@ package utils
 
 import (
 	"bytes"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,5 +102,3 @@ func (e *executor) EvalSymlinks(path string) (string, error) {
 	evalSlink, err := filepath.EvalSymlinks(path)
 	return evalSlink, err
 }
-
-

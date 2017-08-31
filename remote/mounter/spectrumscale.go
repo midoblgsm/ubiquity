@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils"
 )
 
 type spectrumScaleMounter struct {
@@ -33,7 +33,7 @@ func NewSpectrumScaleMounter(logger *log.Logger) resources.Mounter {
 	return &spectrumScaleMounter{logger: logger, executor: utils.NewExecutor()}
 }
 
-func (s *spectrumScaleMounter) Mount(mountRequest resources.MountRequest) (string, error) {
+func (s *spectrumScaleMounter) Mount(mountRequest resources.MountRequest) resources.MountResponse {
 	s.logger.Println("spectrumScaleMounter: Mount start")
 	defer s.logger.Println("spectrumScaleMounter: Mount end")
 
@@ -47,14 +47,14 @@ func (s *spectrumScaleMounter) Mount(mountRequest resources.MountRequest) (strin
 			_, err := s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to change permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 			//set permissions to specific user
 			args = []string{"chmod", "og-rw", mountRequest.Mountpoint}
 			_, err = s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to set user permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 		} else {
 			//chmod 777 mountpoint
@@ -62,24 +62,24 @@ func (s *spectrumScaleMounter) Mount(mountRequest resources.MountRequest) (strin
 			_, err := s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to change permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 		}
 	}
 
-	return mountRequest.Mountpoint, nil
+	return resources.MountResponse{Mountpoint: mountRequest.Mountpoint}
 }
 
-func (s *spectrumScaleMounter) Unmount(unmountRequest resources.UnmountRequest) error {
+func (s *spectrumScaleMounter) Unmount(unmountRequest resources.UnmountRequest) resources.UnmountResponse {
 	s.logger.Println("spectrumScaleMounter: Unmount start")
 	defer s.logger.Println("spectrumScaleMounter: Unmount end")
 
 	// for spectrum-scale native: No Op for now
-	return nil
+	return resources.UnmountResponse{}
 
 }
 
-func (s *spectrumScaleMounter) ActionAfterDetach(request resources.AfterDetachRequest) error {
+func (s *spectrumScaleMounter) ActionAfterDetach(request resources.AfterDetachRequest) resources.AfterDetachResponse {
 	// no action needed for SSc
-	return nil
+	return resources.AfterDetachResponse{}
 }

@@ -27,13 +27,13 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/IBM/ubiquity/local"
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils"
-	"github.com/IBM/ubiquity/utils/logs"
-	"github.com/IBM/ubiquity/web_server"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/midoblgsm/ubiquity/local"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils"
+	"github.com/midoblgsm/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/web_server"
 )
 
 var configFile = flag.String(

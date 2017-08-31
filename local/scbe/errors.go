@@ -18,7 +18,7 @@ package scbe
 
 import (
 	"fmt"
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/resources"
 )
 
 type serviceDoesntExistError struct {

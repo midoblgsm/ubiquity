@@ -18,9 +18,9 @@ package scbe_test
 
 import (
 	"encoding/json"
-	"github.com/IBM/ubiquity/local/scbe"
-	"github.com/IBM/ubiquity/resources"
 	"github.com/jarcoal/httpmock"
+	"github.com/midoblgsm/ubiquity/local/scbe"
+	"github.com/midoblgsm/ubiquity/resources"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega" // including the whole package inside the file
 	"net/http"
@@ -176,7 +176,6 @@ var _ = Describe("restClient", func() {
 	})
 })
 
-
 func CountLoginResponder(num *int, retryToken string) httpmock.Responder {
 	*num = 0
 	loginResponse := scbe.LoginResponse{Token: retryToken}
@@ -193,7 +192,7 @@ func TokenExpiredResponder(num *int, retryToken string) httpmock.Responder {
 	return func(req *http.Request) (*http.Response, error) {
 		*num++
 		auth := req.Header[scbe.HTTP_AUTH_KEY]
-		if len(auth) == 1 && auth[0] == "Token " + retryToken {
+		if len(auth) == 1 && auth[0] == "Token "+retryToken {
 			return httpmock.NewStringResponse(http.StatusOK, fakeServiceJsonResponse), nil
 		} else {
 			return httpmock.NewStringResponse(http.StatusUnauthorized, ""), nil

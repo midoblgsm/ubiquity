@@ -18,10 +18,10 @@ package scbe_test
 
 import (
 	"fmt"
-	"github.com/IBM/ubiquity/local/scbe"
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils/logs"
 	"github.com/jinzhu/gorm"
+	"github.com/midoblgsm/ubiquity/local/scbe"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega" // including the whole package inside the file
 	"os"

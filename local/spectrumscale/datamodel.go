@@ -21,10 +21,10 @@ import (
 
 	"fmt"
 
-	"github.com/IBM/ubiquity/model"
-	"github.com/IBM/ubiquity/resources"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/midoblgsm/ubiquity/model"
+	"github.com/midoblgsm/ubiquity/resources"
 )
 
 //go:generate counterfeiter -o ../../fakes/fake_SpectrumDataModel.go . SpectrumDataModel

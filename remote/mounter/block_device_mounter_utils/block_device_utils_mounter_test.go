@@ -17,15 +17,15 @@
 package block_device_mounter_utils_test
 
 import (
+	"errors"
 	"fmt"
-	"github.com/IBM/ubiquity/fakes"
-	"github.com/IBM/ubiquity/remote/mounter/block_device_mounter_utils"
-	"github.com/IBM/ubiquity/remote/mounter/block_device_utils"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/fakes"
+	"github.com/midoblgsm/ubiquity/remote/mounter/block_device_mounter_utils"
+	"github.com/midoblgsm/ubiquity/remote/mounter/block_device_utils"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"testing"
-	"errors"
 )
 
 var _ = Describe("block_device_mounter_utils_test", func() {

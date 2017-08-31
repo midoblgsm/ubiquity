@@ -23,8 +23,6 @@ import (
 	"os"
 	"os/user"
 
-	"github.com/IBM/ubiquity/resources"
-
 	"path"
 
 	"log"
@@ -121,15 +119,6 @@ func MkDir(path string) error {
 	return err
 }
 
-func PrintResponse(f resources.FlexVolumeResponse) error {
-	responseBytes, err := json.Marshal(f)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%s", string(responseBytes[:]))
-	return nil
-}
-
 func SetupConfigDirectory(logger *log.Logger, executor Executor, configPath string) (string, error) {
 	logger.Println("setupConfigPath start")
 	defer logger.Println("setupConfigPath end")
@@ -170,36 +159,36 @@ func StringInSlice(a string, list []string) bool {
 	return false
 }
 
-func ConvertToBytes(logger *log.Logger, inputStr string) (uint64,error) {
+func ConvertToBytes(logger *log.Logger, inputStr string) (uint64, error) {
 	var Iter int
 	var byteSlice []byte
 	var retValue uint64
 	var uintMax64 uint64
 
 	byteSlice = []byte(inputStr)
-	uintMax64 = (1 << 64) - 1	
+	uintMax64 = (1 << 64) - 1
 
-	for Iter=0; Iter < len(byteSlice); Iter++ {
-		if (('0' <= byteSlice[Iter]) && 
-		   (byteSlice[Iter] <= '9')) {
+	for Iter = 0; Iter < len(byteSlice); Iter++ {
+		if ('0' <= byteSlice[Iter]) &&
+			(byteSlice[Iter] <= '9') {
 			continue
 		} else {
 			break
 		}
 	}
 
-	if (Iter == 0) {
-		return 0, fmt.Errorf("Invalid number specified %v",inputStr)
+	if Iter == 0 {
+		return 0, fmt.Errorf("Invalid number specified %v", inputStr)
 	}
 
-	retValue,err := strconv.ParseUint(inputStr[:Iter], 10, 64)
+	retValue, err := strconv.ParseUint(inputStr[:Iter], 10, 64)
 
 	if err != nil {
-		return 0, fmt.Errorf("ParseUint Failed for %v",inputStr[:Iter])
+		return 0, fmt.Errorf("ParseUint Failed for %v", inputStr[:Iter])
 	}
 
-	if (Iter == len(inputStr)) {
-		logger.Printf("Input string has no Unit, returning %v\n",retValue)
+	if Iter == len(inputStr) {
+		logger.Printf("Input string has no Unit, returning %v\n", retValue)
 		return retValue, nil
 	}
 
@@ -207,22 +196,22 @@ func ConvertToBytes(logger *log.Logger, inputStr string) (uint64,error) {
 	unit = strings.ToLower(unit)
 
 	switch unit {
-		case "b", "bytes":
-			/* Nothing to do here */
-	    	case "k", "kb", "kilobytes", "kilobyte":
-			retValue *= 1024
-		case "m", "mb", "megabytes", "megabyte":
-			retValue *= (1024*1024)
-		case "g", "gb", "gigabytes", "gigabyte":
-			retValue *= (1024*1024*1024)
-		case "t", "tb", "terabytes", "terabyte":
-			retValue *= (1024*1024*1024*1024)
-		default:
-			return 0, fmt.Errorf("Invalid Unit %v supplied with %v",unit, inputStr)
+	case "b", "bytes":
+		/* Nothing to do here */
+	case "k", "kb", "kilobytes", "kilobyte":
+		retValue *= 1024
+	case "m", "mb", "megabytes", "megabyte":
+		retValue *= (1024 * 1024)
+	case "g", "gb", "gigabytes", "gigabyte":
+		retValue *= (1024 * 1024 * 1024)
+	case "t", "tb", "terabytes", "terabyte":
+		retValue *= (1024 * 1024 * 1024 * 1024)
+	default:
+		return 0, fmt.Errorf("Invalid Unit %v supplied with %v", unit, inputStr)
 	}
-	
+
 	if retValue > uintMax64 {
-		return 0, fmt.Errorf("Overflow detected %v",inputStr)
+		return 0, fmt.Errorf("Overflow detected %v", inputStr)
 	}
 
 	return retValue, nil

@@ -23,7 +23,7 @@ const (
 	ISCSI
 )
 
-//go:generate counterfeiter -o ../fakes/fake_block_device_utils.go . BlockDeviceUtils
+//go:generate counterfeiter -o ../../../../fakes/fake_block_device_utils.go . BlockDeviceUtils
 type BlockDeviceUtils interface {
 	Rescan(protocol Protocol) error
 	ReloadMultipath() error

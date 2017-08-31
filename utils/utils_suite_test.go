@@ -17,7 +17,7 @@
 package utils_test
 
 import (
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 

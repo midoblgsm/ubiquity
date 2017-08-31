@@ -19,9 +19,9 @@ package model
 import (
 	"fmt"
 
-	"github.com/IBM/ubiquity/resources"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/midoblgsm/ubiquity/resources"
 )
 
 func GetVolume(db *gorm.DB, name string, backend string) (resources.Volume, error) {

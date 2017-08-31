@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/jarcoal/httpmock"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 )
 
 func TestScbe(t *testing.T) {

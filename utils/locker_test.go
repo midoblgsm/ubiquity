@@ -23,7 +23,7 @@ import (
 
 	"fmt"
 
-	"github.com/IBM/ubiquity/utils"
+	"github.com/midoblgsm/ubiquity/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )

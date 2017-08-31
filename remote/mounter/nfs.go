@@ -22,8 +22,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils"
 )
 
 type nfsMounter struct {
@@ -35,14 +35,14 @@ func NewNfsMounter(logger *log.Logger) resources.Mounter {
 	return &nfsMounter{logger: logger, executor: utils.NewExecutor()}
 }
 
-func (s *nfsMounter) Mount(mountRequest resources.MountRequest) (string, error) {
+func (s *nfsMounter) Mount(mountRequest resources.MountRequest) resources.MountResponse {
 	s.logger.Println("nfsMounter: Mount start")
 	defer s.logger.Println("nfsMounter: Mount end")
 
 	remoteMountpoint := path.Join("/mnt/", strings.Split(mountRequest.Mountpoint, ":")[1])
 	if s.isMounted(mountRequest.Mountpoint, remoteMountpoint) {
 		s.logger.Printf("nfsMounter: - mount: %s is already mounted at %s\n", mountRequest.Mountpoint, remoteMountpoint)
-		return remoteMountpoint, nil
+		return resources.MountResponse{Mountpoint: remoteMountpoint}
 	}
 
 	s.logger.Printf("nfsMounter: mkdir -p %s\n", remoteMountpoint)
@@ -50,7 +50,7 @@ func (s *nfsMounter) Mount(mountRequest resources.MountRequest) (string, error) 
 
 	_, err := s.executor.Execute("sudo", args)
 	if err != nil {
-		return "", fmt.Errorf("nfsMounter: Failed to mkdir for remote mountpoint %s (share %s, error '%s')\n", remoteMountpoint, mountRequest.Mountpoint, err.Error())
+		return resources.MountResponse{Error: fmt.Errorf("nfsMounter: Failed to mkdir for remote mountpoint %s (share %s, error '%s')\n", remoteMountpoint, mountRequest.Mountpoint, err.Error())}
 	}
 
 	isPreexisting, isPreexistingSpecified := mountRequest.VolumeConfig["isPreexisting"]
@@ -62,14 +62,14 @@ func (s *nfsMounter) Mount(mountRequest resources.MountRequest) (string, error) 
 			_, err = s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to change permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 			//set permissions to specific user
 			args = []string{"chmod", "og-rw", remoteMountpoint}
 			_, err = s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to set user permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 
 		} else {
@@ -78,14 +78,15 @@ func (s *nfsMounter) Mount(mountRequest resources.MountRequest) (string, error) 
 			_, err = s.executor.Execute("sudo", args)
 			if err != nil {
 				s.logger.Printf("Failed to change permissions of mountpoint %s: %s", mountRequest.Mountpoint, err.Error())
-				return "", err
+				return resources.MountResponse{Error: err}
 			}
 		}
 	}
 	return s.mount(mountRequest.Mountpoint, remoteMountpoint)
+
 }
 
-func (s *nfsMounter) Unmount(unmountRequest resources.UnmountRequest) error {
+func (s *nfsMounter) Unmount(unmountRequest resources.UnmountRequest) resources.UnmountResponse {
 	s.logger.Println("nfsMounter: Unmount start")
 	defer s.logger.Println("nfsMounter: Unmount end")
 
@@ -98,18 +99,18 @@ func (s *nfsMounter) Unmount(unmountRequest resources.UnmountRequest) error {
 
 }
 
-func (s *nfsMounter) mount(nfsShare, remoteMountpoint string) (string, error) {
+func (s *nfsMounter) mount(nfsShare, remoteMountpoint string) resources.MountResponse {
 	s.logger.Printf("nfsMounter: - mount start nfsShare=%s\n", nfsShare)
 	defer s.logger.Printf("nfsMounter: - mount end nfsShare=%s\n", nfsShare)
 
 	args := []string{"mount", "-t", "nfs", nfsShare, remoteMountpoint}
 	output, err := s.executor.Execute("sudo", args)
 	if err != nil {
-		return "", fmt.Errorf("nfsMounter: Failed to mount share %s to remote mountpoint %s (error '%s', output '%s')\n", nfsShare, remoteMountpoint, err.Error(), output)
+		return resources.MountResponse{Error: fmt.Errorf("nfsMounter: Failed to mount share %s to remote mountpoint %s (error '%s', output '%s')\n", nfsShare, remoteMountpoint, err.Error(), output)}
 	}
 	s.logger.Printf("nfsMounter:  mount output: %s\n", string(output))
 
-	return remoteMountpoint, nil
+	return resources.MountResponse{Mountpoint: remoteMountpoint}
 }
 
 func (s *nfsMounter) isMounted(nfsShare, remoteMountpoint string) bool {
@@ -127,21 +128,21 @@ func (s *nfsMounter) isMounted(nfsShare, remoteMountpoint string) bool {
 	return true
 }
 
-func (s *nfsMounter) unmount(remoteMountpoint string) error {
+func (s *nfsMounter) unmount(remoteMountpoint string) resources.UnmountResponse {
 	s.logger.Printf("nfsMounter: - unmount start remoteMountpoint=%s\n", remoteMountpoint)
 	defer s.logger.Printf("nfsMounter: - unmount end remoteMountpoint=%s\n", remoteMountpoint)
 
 	args := []string{"umount", remoteMountpoint}
 	output, err := s.executor.Execute("sudo", args)
 	if err != nil {
-		return fmt.Errorf("Failed to unmount remote mountpoint %s (error '%s', output '%s')\n", remoteMountpoint, err.Error(), output)
+		return resources.UnmountResponse{Error: fmt.Errorf("Failed to unmount remote mountpoint %s (error '%s', output '%s')\n", remoteMountpoint, err.Error(), output)}
 	}
 	s.logger.Printf("nfsMounter: umount output: %s\n", string(output))
 
-	return nil
+	return resources.UnmountResponse{}
 }
 
-func (s *nfsMounter) ActionAfterDetach(request resources.AfterDetachRequest) error {
+func (s *nfsMounter) ActionAfterDetach(request resources.AfterDetachRequest) resources.AfterDetachResponse {
 	// no action needed for SSc
-	return nil
+	return resources.AfterDetachResponse{}
 }

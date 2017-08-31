@@ -18,7 +18,7 @@ package block_device_utils
 
 import (
 	"errors"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 )
 
 func (b *blockDeviceUtils) Rescan(protocol Protocol) error {

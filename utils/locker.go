@@ -18,7 +18,7 @@ package utils
 
 import (
 	"fmt"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	"sync"
 	"time"
 )

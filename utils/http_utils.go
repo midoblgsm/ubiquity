@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/resources"
 	"github.com/gorilla/mux"
 )
 

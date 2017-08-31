@@ -19,7 +19,7 @@ package connectors
 import (
 	"log"
 
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/resources"
 )
 
 //go:generate counterfeiter -o ../../../fakes/fake_spectrum.go . SpectrumScaleConnector
@@ -50,7 +50,7 @@ const (
 	UserSpecifiedFilesetType string = "fileset-type"
 	UserSpecifiedInodeLimit  string = "inode-limit"
 	UserSpecifiedUid         string = "uid"
-	UserSpecifiedGid	 string = "gid"
+	UserSpecifiedGid         string = "gid"
 )
 
 func GetSpectrumScaleConnector(logger *log.Logger, config resources.SpectrumScaleConfig) (SpectrumScaleConnector, error) {

@@ -17,8 +17,8 @@
 package block_device_mounter_utils
 
 import (
-	"github.com/IBM/ubiquity/remote/mounter/block_device_utils"
-	"github.com/IBM/ubiquity/utils/logs"
+	"github.com/midoblgsm/ubiquity/remote/mounter/block_device_utils"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 	"sync"
 )
 

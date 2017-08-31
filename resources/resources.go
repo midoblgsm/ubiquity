@@ -16,7 +16,10 @@
 
 package resources
 
-import "github.com/jinzhu/gorm"
+import (
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/jinzhu/gorm"
+)
 
 const (
 	SpectrumScale    string = "spectrum-scale"
@@ -121,26 +124,25 @@ type ScbeRemoteConfig struct {
 	SkipRescanISCSI bool
 }
 
-
 //go:generate counterfeiter -o ../fakes/fake_storage_client.go . StorageClient
 
 type StorageClient interface {
-	Activate(activateRequest ActivateRequest) error
-	CreateVolume(createVolumeRequest CreateVolumeRequest) error
-	RemoveVolume(removeVolumeRequest RemoveVolumeRequest) error
-	ListVolumes(listVolumeRequest ListVolumesRequest) ([]Volume, error)
-	GetVolume(getVolumeRequest GetVolumeRequest) (Volume, error)
-	GetVolumeConfig(getVolumeConfigRequest GetVolumeConfigRequest) (map[string]interface{}, error)
-	Attach(attachRequest AttachRequest) (string, error)
-	Detach(detachRequest DetachRequest) error
+	Activate(activateRequest ActivateRequest) ActivateResponse
+	CreateVolume(createVolumeRequest CreateVolumeRequest) CreateVolumeResponse
+	RemoveVolume(removeVolumeRequest RemoveVolumeRequest) RemoveVolumeResponse
+	ListVolumes(listVolumeRequest ListVolumesRequest) ListVolumesResponse
+	GetVolume(getVolumeRequest GetVolumeRequest) GetVolumeResponse
+	GetVolumeConfig(getVolumeConfigRequest GetVolumeConfigRequest) GetVolumeConfigResponse
+	Attach(attachRequest AttachRequest) AttachResponse
+	Detach(detachRequest DetachRequest) DetachResponse
 }
 
 //go:generate counterfeiter -o ../fakes/fake_mounter.go . Mounter
 
 type Mounter interface {
-	Mount(mountRequest MountRequest) (string, error)
-	Unmount(unmountRequest UnmountRequest) error
-	ActionAfterDetach(request AfterDetachRequest) error
+	Mount(mountRequest MountRequest) MountResponse
+	Unmount(unmountRequest UnmountRequest) UnmountResponse
+	ActionAfterDetach(request AfterDetachRequest) AfterDetachResponse
 }
 
 type ActivateRequest struct {
@@ -149,9 +151,12 @@ type ActivateRequest struct {
 }
 
 type CreateVolumeRequest struct {
-	Name    string
-	Backend string
-	Opts    map[string]interface{}
+	Name          string
+	Backend       string
+	CapacityBytes uint64
+	ID            csi.VolumeID
+	Metadata      csi.VolumeMetadata
+	Opts          map[string]interface{}
 }
 
 type RemoveVolumeRequest struct {
@@ -179,8 +184,21 @@ type GetVolumeConfigRequest struct {
 	Name string
 }
 type ActivateResponse struct {
-	Implements []string
-	Err        string
+	Error error
+}
+
+type CreateVolumeResponse struct {
+	Volume Volume
+	Error  error
+}
+
+type RemoveVolumeResponse struct {
+	Error error
+}
+
+type ListVolumesResponse struct {
+	Volumes []Volume
+	Error   error
 }
 
 type GenericResponse struct {
@@ -203,17 +221,33 @@ type AfterDetachRequest struct {
 }
 type AttachResponse struct {
 	Mountpoint string
-	Err        string
+	Error      error
 }
 
 type MountResponse struct {
 	Mountpoint string
-	Err        string
+	Error      error
 }
 
-type GetResponse struct {
+type UnmountResponse struct {
+	Error error
+}
+
+type DetachResponse struct {
+	Error error
+}
+
+type AfterDetachResponse struct {
+	Error error
+}
+
+type GetVolumeResponse struct {
 	Volume Volume
-	Err    string
+	Error  error
+}
+type GetVolumeConfigResponse struct {
+	VolumeConfig map[string]interface{}
+	Error        error
 }
 
 type DockerGetResponse struct {
@@ -223,9 +257,12 @@ type DockerGetResponse struct {
 
 type Volume struct {
 	gorm.Model
-	Name       string
-	Backend    string
-	Mountpoint string
+	Name          string
+	ID            csi.VolumeID
+	CapacityBytes uint64
+	Metadata      csi.VolumeMetadata
+	Backend       string
+	Mountpoint    string
 }
 
 type GetConfigResponse struct {
@@ -236,31 +273,4 @@ type GetConfigResponse struct {
 type ListResponse struct {
 	Volumes []Volume
 	Err     string
-}
-
-type FlexVolumeResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Device  string `json:"device"`
-}
-
-type FlexVolumeMountRequest struct {
-	MountPath   string                 `json:"mountPath"`
-	MountDevice string                 `json:"name"`
-	Opts        map[string]interface{} `json:"opts"`
-}
-
-type FlexVolumeUnmountRequest struct {
-	MountPath string `json:"mountPath"`
-}
-
-type FlexVolumeAttachRequest struct {
-	Name string            `json:"name"`
-	Host string            `json:"host"`
-	Opts map[string]string `json:"opts"`
-}
-
-type FlexVolumeDetachRequest struct {
-	Name string `json:"name"`
-	Host string `json:"host"`
 }

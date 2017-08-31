@@ -19,11 +19,11 @@ package scbe
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/IBM/ubiquity/utils/logs"
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils/logs"
 )
 
-//go:generate counterfeiter -o ../fakes/fake_scbe_rest_client.go . ScbeRestClient
+//go:generate counterfeiter -o ../../fakes/fake_scbe_rest_client.go . ScbeRestClient
 type ScbeRestClient interface {
 	Login() error
 	CreateVolume(volName string, serviceName string, size int) (ScbeVolumeInfo, error)

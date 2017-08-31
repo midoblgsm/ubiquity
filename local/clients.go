@@ -18,10 +18,10 @@ package local
 
 import (
 	"fmt"
-	"github.com/IBM/ubiquity/local/scbe"
-	"github.com/IBM/ubiquity/local/spectrumscale"
-	"github.com/IBM/ubiquity/resources"
 	"github.com/jinzhu/gorm"
+	"github.com/midoblgsm/ubiquity/local/scbe"
+	"github.com/midoblgsm/ubiquity/local/spectrumscale"
+	"github.com/midoblgsm/ubiquity/resources"
 	"log"
 )
 
@@ -35,19 +35,19 @@ func GetLocalClients(logger *log.Logger, config resources.UbiquityServerConfig, 
 		clients[resources.SpectrumScale] = spectrumClient
 	}
 
-	spectrumNfsClient, err := spectrumscale.NewSpectrumNfsLocalClient(logger, config, database)
-	if err != nil {
-		logger.Printf("Not enough params to initialize '%s' client", resources.SpectrumScaleNFS)
-	} else {
-		clients[resources.SpectrumScaleNFS] = spectrumNfsClient
-	}
+	//spectrumNfsClient, err := spectrumscale.NewSpectrumNfsLocalClient(logger, config, database)
+	//if err != nil {
+	//	logger.Printf("Not enough params to initialize '%s' client", resources.SpectrumScaleNFS)
+	//} else {
+	//	clients[resources.SpectrumScaleNFS] = spectrumNfsClient
+	//}
 
-	ScbeClient, err := scbe.NewScbeLocalClient(config.ScbeConfig, database)
-	if err != nil {
-		logger.Printf("Not enough params to initialize '%s' client", resources.SCBE)
-	} else {
-		clients[resources.SCBE] = ScbeClient
-	}
+	//ScbeClient, err := scbe.NewScbeLocalClient(config.ScbeConfig, database)
+	//if err != nil {
+	//	logger.Printf("Not enough params to initialize '%s' client", resources.SCBE)
+	//} else {
+	//	clients[resources.SCBE] = ScbeClient
+	//}
 
 	if len(clients) == 0 {
 		log.Fatal("No client can be initialized....please check config file")

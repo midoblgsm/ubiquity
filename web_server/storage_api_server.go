@@ -21,7 +21,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/resources"
 
 	"github.com/gorilla/mux"
 	"github.com/jinzhu/gorm"

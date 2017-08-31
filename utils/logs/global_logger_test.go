@@ -1,6 +1,6 @@
 package logs_test
 
-import "github.com/IBM/ubiquity/utils/logs"
+import "github.com/midoblgsm/ubiquity/utils/logs"
 
 // Init a logger to file "/tmp/ubiquity.log" at DEBUG level
 func ExampleInitFileLogger() {

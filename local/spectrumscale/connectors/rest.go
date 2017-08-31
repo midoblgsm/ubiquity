@@ -19,8 +19,8 @@ package connectors
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/IBM/ubiquity/resources"
-	"github.com/IBM/ubiquity/utils"
+	"github.com/midoblgsm/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/utils"
 	"log"
 	"net/http"
 	"os"
