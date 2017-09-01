@@ -59,10 +59,10 @@ func (h *StorageApiHandler) Activate() http.HandlerFunc {
 					utils.WriteResponse(w, http.StatusNotFound, &resources.GenericResponse{Err: "backend-not-found"})
 					return
 				}
-				err = backend.Activate(activateRequest)
-				if err != nil {
-					h.logger.Printf("Error activating %s", err.Error())
-					utils.WriteResponse(w, http.StatusInternalServerError, &resources.GenericResponse{Err: err.Error()})
+				activateResponse := backend.Activate(activateRequest)
+				if activateResponse.Error != nil {
+					h.logger.Printf("Error activating %s", activateResponse.Error.Error())
+					utils.WriteResponse(w, http.StatusInternalServerError, &resources.GenericResponse{Err: activateResponse.Error.Error()})
 					return
 				}
 			}
@@ -71,9 +71,9 @@ func (h *StorageApiHandler) Activate() http.HandlerFunc {
 			h.logger.Printf("Activating all backends")
 			errors = ""
 			for name, backend := range h.backends {
-				err := backend.Activate(activateRequest)
-				if err != nil {
-					h.logger.Printf(fmt.Sprintf("Error activating %s %s", name, err.Error()))
+				activateResponse := backend.Activate(activateRequest)
+				if activateResponse.Error != nil {
+					h.logger.Printf(fmt.Sprintf("Error activating %s %s", name, activateResponse.Error.Error()))
 					errors = fmt.Sprintf("%s,%s", errors, name)
 				}
 			}
@@ -119,12 +119,12 @@ func (h *StorageApiHandler) CreateVolume() http.HandlerFunc {
 
 		h.locker.WriteLock(createVolumeRequest.Name) // will ensure no other caller can create volume with same name concurrently
 		defer h.locker.WriteUnlock(createVolumeRequest.Name)
-		err = backend.CreateVolume(createVolumeRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+		createVolumeResponse := backend.CreateVolume(createVolumeRequest)
+		if createVolumeResponse.Error != nil {
+			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: createVolumeResponse.Error.Error()})
 			return
 		}
-		utils.WriteResponse(w, http.StatusOK, nil)
+		utils.WriteResponse(w, http.StatusOK, createVolumeResponse)
 	}
 }
 
@@ -146,12 +146,12 @@ func (h *StorageApiHandler) RemoveVolume() http.HandlerFunc {
 
 		h.locker.WriteLock(removeVolumeRequest.Name)
 		defer h.locker.WriteUnlock(removeVolumeRequest.Name)
-		err = backend.RemoveVolume(removeVolumeRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+		removeVolumeResponse := backend.RemoveVolume(removeVolumeRequest)
+		if removeVolumeResponse.Error != nil {
+			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: removeVolumeResponse.Error.Error()})
 			return
 		}
-		utils.WriteResponse(w, http.StatusOK, nil)
+		utils.WriteResponse(w, http.StatusOK, removeVolumeResponse)
 	}
 }
 
@@ -173,14 +173,13 @@ func (h *StorageApiHandler) AttachVolume() http.HandlerFunc {
 
 		h.locker.WriteLock(attachRequest.Name)
 		defer h.locker.WriteUnlock(attachRequest.Name)
-		mountpoint, err := backend.Attach(attachRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+		attachVolumeResponse := backend.Attach(attachRequest)
+		if attachVolumeResponse.Error != nil {
+			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: attachVolumeResponse.Error.Error()})
 			return
 		}
-		attachResponse := resources.MountResponse{Mountpoint: mountpoint}
 
-		utils.WriteResponse(w, http.StatusOK, attachResponse)
+		utils.WriteResponse(w, http.StatusOK, attachVolumeResponse)
 	}
 }
 
@@ -202,12 +201,12 @@ func (h *StorageApiHandler) DetachVolume() http.HandlerFunc {
 
 		h.locker.WriteLock(detachRequest.Name)
 		defer h.locker.WriteUnlock(detachRequest.Name)
-		err = backend.Detach(detachRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+		detachResponse := backend.Detach(detachRequest)
+		if detachResponse.Error != nil {
+			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: detachResponse.Error.Error()})
 			return
 		}
-		utils.WriteResponse(w, http.StatusOK, nil)
+		utils.WriteResponse(w, http.StatusOK, detachResponse)
 	}
 }
 
@@ -230,15 +229,13 @@ func (h *StorageApiHandler) GetVolumeConfig() http.HandlerFunc {
 		h.locker.WriteLock(getVolumeConfigRequest.Name)
 		defer h.locker.WriteUnlock(getVolumeConfigRequest.Name)
 
-		config, err := backend.GetVolumeConfig(getVolumeConfigRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GetConfigResponse{Err: err.Error()})
+		getVolumeConfigResponse := backend.GetVolumeConfig(getVolumeConfigRequest)
+		if getVolumeConfigResponse.Error != nil {
+			utils.WriteResponse(w, 409, &resources.GetConfigResponse{Err: getVolumeConfigResponse.Error.Error()})
 			return
 		}
 
-		getResponse := resources.GetConfigResponse{VolumeConfig: config}
-
-		utils.WriteResponse(w, http.StatusOK, getResponse)
+		utils.WriteResponse(w, http.StatusOK, getVolumeConfigResponse)
 	}
 }
 
@@ -262,15 +259,13 @@ func (h *StorageApiHandler) GetVolume() http.HandlerFunc {
 		h.locker.WriteLock(getVolumeRequest.Name)
 		defer h.locker.WriteUnlock(getVolumeRequest.Name)
 
-		volumeInfo, err := backend.GetVolume(getVolumeRequest)
-		if err != nil {
-			utils.WriteResponse(w, 409, &resources.GetResponse{Err: err.Error()})
+		getVolumeResponse := backend.GetVolume(getVolumeRequest)
+		if getVolumeResponse.Error != nil {
+			utils.WriteResponse(w, 409, getVolumeResponse.Error)
 			return
 		}
 
-		getResponse := resources.GetResponse{Volume: volumeInfo}
-
-		utils.WriteResponse(w, http.StatusOK, getResponse)
+		utils.WriteResponse(w, http.StatusOK, getVolumeResponse)
 	}
 }
 
@@ -283,7 +278,7 @@ func (h *StorageApiHandler) ListVolumes() http.HandlerFunc {
 			utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
 			return
 		}
-
+		var listVolumesResponse resources.ListVolumesResponse
 		var volumes []resources.Volume
 		if len(listVolumesRequest.Backends) != 0 {
 
@@ -294,15 +289,15 @@ func (h *StorageApiHandler) ListVolumes() http.HandlerFunc {
 					utils.WriteResponse(w, http.StatusNotFound, &resources.GenericResponse{Err: "backend-not-found"})
 					return
 				}
-				volumesForBackend, err := backend.ListVolumes(listVolumesRequest)
-				if err != nil {
-					h.logger.Printf("Error listing volume %s", err.Error())
-					utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+				listVolumesResponse = backend.ListVolumes(listVolumesRequest)
+				if listVolumesResponse.Error != nil {
+					h.logger.Printf("Error listing volume %s", listVolumesResponse.Error.Error())
+					utils.WriteResponse(w, 409, &resources.GenericResponse{Err: listVolumesResponse.Error.Error()})
 					return
 				}
-				volumes = append(volumes, volumesForBackend...)
+				volumes = append(volumes, listVolumesResponse.Volumes...)
 			}
-			listResponse := resources.ListResponse{Volumes: volumes}
+			listResponse := resources.ListVolumesResponse{Volumes: volumes}
 			h.logger.Printf("List response: %#v\n", listResponse)
 			utils.WriteResponse(w, http.StatusOK, listResponse)
 			return
@@ -310,17 +305,17 @@ func (h *StorageApiHandler) ListVolumes() http.HandlerFunc {
 		}
 
 		for _, backend := range h.backends {
-			volumesForBackend, err := backend.ListVolumes(listVolumesRequest)
-			if err != nil {
-				h.logger.Printf("Error listing volume %s", err.Error())
-				utils.WriteResponse(w, 409, &resources.GenericResponse{Err: err.Error()})
+			listVolumesResponse := backend.ListVolumes(listVolumesRequest)
+			if listVolumesResponse.Error != nil {
+				h.logger.Printf("Error listing volume %s", listVolumesResponse.Error.Error())
+				utils.WriteResponse(w, 409, &resources.GenericResponse{Err: listVolumesResponse.Error.Error()})
 				return
 			}
-			volumes = append(volumes, volumesForBackend...)
+			volumes = append(volumes, listVolumesResponse.Volumes...)
 
 		}
 
-		listResponse := resources.ListResponse{Volumes: volumes}
+		listResponse := resources.ListVolumesResponse{Volumes: volumes}
 		h.logger.Printf("List response: %#v\n", listResponse)
 		utils.WriteResponse(w, http.StatusOK, listResponse)
 	}

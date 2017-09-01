@@ -17,8 +17,8 @@
 package resources
 
 import (
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/jinzhu/gorm"
+	"github.com/midoblgsm/ubiquity/csi"
 )
 
 const (
@@ -153,8 +153,8 @@ type ActivateRequest struct {
 type CreateVolumeRequest struct {
 	Name          string
 	Backend       string
-	CapacityBytes uint64
 	ID            csi.VolumeID
+	CapacityBytes uint64
 	Metadata      csi.VolumeMetadata
 	Opts          map[string]interface{}
 }

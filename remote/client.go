@@ -26,7 +26,6 @@ import (
 
 	"reflect"
 
-	"github.com/IBM/ubiquity-k8s/volume"
 	"github.com/midoblgsm/ubiquity/remote/mounter"
 	"github.com/midoblgsm/ubiquity/utils"
 )
@@ -203,7 +202,7 @@ func (s *remoteClient) Attach(attachRequest resources.AttachRequest) resources.A
 	if err != nil {
 		return resources.AttachResponse{Error: fmt.Errorf("Error determining mounter for volume: %s", err.Error())}
 	}
-	mountRequest := resources.MountRequest{Mountpoint: attachResponse.Mountpoint, VolumeConfig: volumeConfig}
+	mountRequest := resources.MountRequest{Mountpoint: attachResponse.Mountpoint, VolumeConfig: getVolumeConfigResponse.VolumeConfig}
 	mountResponse := mounter.Mount(mountRequest)
 	if mountResponse.Error != nil {
 		return resources.AttachResponse{Error: mountResponse.Error}

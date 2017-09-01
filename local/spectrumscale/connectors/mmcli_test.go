@@ -21,9 +21,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/IBM/ubiquity/fakes"
-	"github.com/IBM/ubiquity/local/spectrumscale/connectors"
-	"github.com/IBM/ubiquity/resources"
+	"github.com/midoblgsm/ubiquity/fakes"
+	"github.com/midoblgsm/ubiquity/local/spectrumscale/connectors"
+	"github.com/midoblgsm/ubiquity/resources"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
