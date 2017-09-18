@@ -18,6 +18,7 @@ package utils
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/midoblgsm/ubiquity/utils/logs"
 	"os"
 	"os/exec"
@@ -65,7 +66,7 @@ func (e *executor) Execute(command string, args []string) ([]byte, error) {
 		})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error %#v", stdErr)
 	}
 	return stdOut, err
 }

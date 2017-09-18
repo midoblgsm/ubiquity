@@ -195,8 +195,12 @@ func (d *spectrumDataModel) ListVolumes() ([]resources.Volume, error) {
 	}
 	// hack: to be replaced by proper DB filtering (joins)
 	var volumes []resources.Volume
+	d.log.Println("backend ", d.backend)
 	for _, volume := range volumesInDb {
+		d.log.Println("volume %#v", volume)
 		if volume.Volume.Backend == d.backend {
+			d.log.Println("volume %#v", volume)
+			d.log.Println("backend for vol %#v", volume.Volume.Backend)
 			volumes = append(volumes, volume.Volume)
 		}
 	}
