@@ -66,7 +66,7 @@ func (e *executor) Execute(command string, args []string) ([]byte, error) {
 		})
 
 	if err != nil {
-		return nil, fmt.Errorf("Error %#v", stdErr)
+		return nil, fmt.Errorf("Error %#v", stdOut)
 	}
 	return stdOut, err
 }
