@@ -1,6 +1,6 @@
 [Unit]
 Description=ubiquity Service
-Documentation=https://github.com/IBM/ubiquity
+Documentation=https://github.com/midoblgsm/ubiquity-csi
 After=network.target
 
 [Service]
