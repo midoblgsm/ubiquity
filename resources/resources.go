@@ -26,6 +26,7 @@ const (
 	SpectrumScaleNFS string = "spectrum-scale-nfs"
 	SoftlayerNFS     string = "softlayer-nfs"
 	SCBE             string = "scbe"
+	LocalHost        string = "localhost"
 )
 
 type UbiquityServerConfig struct {
@@ -34,6 +35,7 @@ type UbiquityServerConfig struct {
 	ConfigPath          string
 	SpectrumScaleConfig SpectrumScaleConfig
 	ScbeConfig          ScbeConfig
+	LocalHostConfig     LocalHostConfig
 	BrokerConfig        BrokerConfig
 	DefaultBackend      string
 	LogLevel            string
@@ -105,6 +107,7 @@ type UbiquityPluginConfig struct {
 	UbiquityServer          UbiquityServerConnectionInfo
 	SpectrumNfsRemoteConfig SpectrumNfsRemoteConfig
 	ScbeRemoteConfig        ScbeRemoteConfig
+	LocalHostConfig         LocalHostConfig
 	Backends                []string
 	LogLevel                string
 }
@@ -122,6 +125,10 @@ type UbiquityServerConnectionInfo struct {
 
 type ScbeRemoteConfig struct {
 	SkipRescanISCSI bool
+}
+
+type LocalHostConfig struct {
+	LocalhostPath string
 }
 
 //go:generate counterfeiter -o ../fakes/fake_storage_client.go . StorageClient

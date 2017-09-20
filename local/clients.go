@@ -19,6 +19,7 @@ package local
 import (
 	"fmt"
 	"github.com/jinzhu/gorm"
+	"github.com/midoblgsm/ubiquity/local/localhost"
 	"github.com/midoblgsm/ubiquity/local/scbe"
 	"github.com/midoblgsm/ubiquity/local/spectrumscale"
 	"github.com/midoblgsm/ubiquity/resources"
@@ -35,12 +36,12 @@ func GetLocalClients(logger *log.Logger, config resources.UbiquityServerConfig, 
 		clients[resources.SpectrumScale] = spectrumClient
 	}
 
-	//spectrumNfsClient, err := spectrumscale.NewSpectrumNfsLocalClient(logger, config, database)
-	//if err != nil {
-	//	logger.Printf("Not enough params to initialize '%s' client", resources.SpectrumScaleNFS)
-	//} else {
-	//	clients[resources.SpectrumScaleNFS] = spectrumNfsClient
-	//}
+	localHostClient, err := localhost.NewLocalhostLocalClient(logger, config, database)
+	if err != nil {
+		logger.Printf("Not enough params to initialize '%s' client", resources.LocalHost)
+	} else {
+		clients[resources.LocalHost] = localHostClient
+	}
 
 	ScbeClient, err := scbe.NewScbeLocalClient(config.ScbeConfig, database)
 	if err != nil {

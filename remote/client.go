@@ -51,19 +51,6 @@ func (s *remoteClient) Activate(activateRequest resources.ActivateRequest) resou
 	if s.isActivated {
 		return resources.ActivateResponse{}
 	}
-
-	// call remote activate
-	activateURL := utils.FormatURL(s.storageApiURL, "activate")
-	response, err := utils.HttpExecute(s.httpClient, s.logger, "POST", activateURL, activateRequest)
-	if err != nil {
-		s.logger.Printf("Error in activate remote call %#v", err)
-		return resources.ActivateResponse{Error: fmt.Errorf("Error in activate remote call")}
-	}
-
-	if response.StatusCode != http.StatusOK {
-		s.logger.Printf("Error in activate remote call %#v\n", response)
-		return resources.ActivateResponse{Error: utils.ExtractErrorResponse(response)}
-	}
 	s.logger.Println("remoteClient: Activate success")
 	s.isActivated = true
 	return resources.ActivateResponse{}
@@ -298,6 +285,8 @@ func (s *remoteClient) getMounterForBackend(backend string) (resources.Mounter, 
 		s.mounterPerBackend[backend] = mounter.NewNfsMounter(s.logger)
 	} else if backend == resources.SCBE {
 		s.mounterPerBackend[backend] = mounter.NewScbeMounter(s.config.ScbeRemoteConfig)
+	} else if backend == resources.LocalHost {
+		s.mounterPerBackend[backend] = mounter.NewLocalHostMounter(s.logger, s.config.LocalHostConfig)
 	} else {
 		return nil, fmt.Errorf("Mounter not found for backend: %s", backend)
 	}
