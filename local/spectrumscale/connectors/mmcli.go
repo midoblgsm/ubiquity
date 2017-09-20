@@ -24,6 +24,7 @@ import (
 
 	"github.com/midoblgsm/ubiquity/resources"
 	"github.com/midoblgsm/ubiquity/utils"
+	"net/url"
 )
 
 type spectrum_mmcli struct {
@@ -191,7 +192,7 @@ func GetFilesystemMountpointInternal(logger *log.Logger, executor utils.Executor
 			mountpoint := strings.TrimSpace(tokens[8])
 
 			//Todo this should be changed to url.PathUnescape when available
-			mountpoint, err := utils.PathUnescape(mountpoint)
+			mountpoint, err := url.PathUnescape(mountpoint)
 			if err != nil {
 				logger.Printf("Error decoding mountpoint: %s\n", err)
 			} else {
