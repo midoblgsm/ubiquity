@@ -265,7 +265,7 @@ type DockerGetResponse struct {
 type Volume struct {
 	gorm.Model
 	Name          string
-	ID            csi.VolumeID
+	VolumeID      csi.VolumeID
 	CapacityBytes uint64
 	Metadata      csi.VolumeMetadata
 	Backend       string

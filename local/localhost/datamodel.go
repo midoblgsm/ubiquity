@@ -27,14 +27,6 @@ type localhostDataModel struct {
 	backend  string
 }
 
-type SpectrumScaleVolume struct {
-	ID        uint
-	Volume    resources.Volume
-	VolumeID  uint
-	Directory string
-	Quota     string
-}
-
 func NewLocalhostDataModel(log *log.Logger, db *gorm.DB, backend string) LocalhostDataModel {
 	return &localhostDataModel{log: log, database: db, backend: backend}
 }
@@ -88,8 +80,8 @@ func (d *localhostDataModel) insertVolume(volume resources.Volume) error {
 }
 
 func (d *localhostDataModel) GetVolume(name string) (resources.Volume, bool, error) {
-	d.log.Println("SpectrumDataModel: GetVolume start")
-	defer d.log.Println("SpectrumDataModel: GetVolume end")
+	d.log.Println("localhostDataModel: GetVolume start")
+	defer d.log.Println("localhostDataModel: GetVolume end")
 
 	volume, err := model.GetVolume(d.database, name, d.backend)
 	if err != nil {
@@ -100,7 +92,7 @@ func (d *localhostDataModel) GetVolume(name string) (resources.Volume, bool, err
 	}
 
 	var localhostVolume resources.Volume
-	if err := d.database.Where("volume_id = ?", volume.ID).Preload("Volume").First(&localhostVolume).Error; err != nil {
+	if err := d.database.Where("volume_id = ?", volume.ID).First(&localhostVolume).Error; err != nil {
 		if err.Error() == "record not found" {
 			return resources.Volume{}, false, nil
 		}
@@ -110,26 +102,16 @@ func (d *localhostDataModel) GetVolume(name string) (resources.Volume, bool, err
 }
 
 func (d *localhostDataModel) ListVolumes() ([]resources.Volume, error) {
-	d.log.Println("SpectrumDataModel: ListVolumes start")
-	defer d.log.Println("SpectrumDataModel: ListVolumes end")
+	d.log.Println("localhostDataModel: ListVolumes start")
+	defer d.log.Println("localhostDataModel: ListVolumes end")
 
 	var volumesInDb []resources.Volume
-	if err := d.database.Preload("Volume").Find(&volumesInDb).Error; err != nil {
+
+	if err := d.database.Where("backend = ?", d.backend).Find(&volumesInDb).Error; err != nil {
 		return nil, err
 	}
-	// hack: to be replaced by proper DB filtering (joins)
-	var volumes []resources.Volume
-	d.log.Println("backend ", d.backend)
-	for _, volume := range volumesInDb {
-		d.log.Println("volume %#v", volume)
-		if volume.Backend == d.backend {
-			d.log.Println("volume %#v", volume)
-			d.log.Println("backend for vol %#v", volume.Backend)
-			volumes = append(volumes, volume)
-		}
-	}
 
-	return volumes, nil
+	return volumesInDb, nil
 }
 
 func (d *localhostDataModel) UpdateVolumeMountpoint(name string, mountpoint string) error {

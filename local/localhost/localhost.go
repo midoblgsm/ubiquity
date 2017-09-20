@@ -102,6 +102,8 @@ func (s *localhostLocalClient) CreateVolume(createVolumeRequest resources.Create
 		s.logger.Println(err.Error())
 		return resources.CreateVolumeResponse{Error: err}
 	}
+
+	s.dataModel.InsertVolume(volume)
 	return resources.CreateVolumeResponse{Volume: volume}
 }
 
@@ -183,8 +185,8 @@ func (s *localhostLocalClient) GetVolumeConfig(getVolumeConfigRequest resources.
 }
 
 func (s *localhostLocalClient) Attach(attachRequest resources.AttachRequest) resources.AttachResponse {
-	s.logger.Println("spectrumLocalClient: attach start")
-	defer s.logger.Println("spectrumLocalClient: attach end")
+	s.logger.Println("localhostLocalClient: attach start")
+	defer s.logger.Println("localhostLocalClient: attach end")
 
 	_, volExists, err := s.dataModel.GetVolume(attachRequest.Name)
 
@@ -201,8 +203,8 @@ func (s *localhostLocalClient) Attach(attachRequest resources.AttachRequest) res
 }
 
 func (s *localhostLocalClient) Detach(detachRequest resources.DetachRequest) resources.DetachResponse {
-	s.logger.Println("spectrumLocalClient: detach start")
-	defer s.logger.Println("spectrumLocalClient: detach end")
+	s.logger.Println("localhostLocalClient: detach start")
+	defer s.logger.Println("localhostLocalClient: detach end")
 
 	_, volExists, err := s.dataModel.GetVolume(detachRequest.Name)
 
@@ -219,8 +221,8 @@ func (s *localhostLocalClient) Detach(detachRequest resources.DetachRequest) res
 }
 
 func (s *localhostLocalClient) ListVolumes(listVolumesRequest resources.ListVolumesRequest) resources.ListVolumesResponse {
-	s.logger.Println("spectrumLocalClient: list start")
-	defer s.logger.Println("spectrumLocalClient: list end")
+	s.logger.Println("localhostLocalClient: list start")
+	defer s.logger.Println("localhostLocalClient: list end")
 	var err error
 
 	volumesInDb, err := s.dataModel.ListVolumes()

@@ -211,7 +211,7 @@ func (s *scbeLocalClient) CreateVolume(createVolumeRequest resources.CreateVolum
 		return resources.CreateVolumeResponse{Error: s.logger.ErrorRet(&VolumeNameExceededMaxLengthError{createVolumeRequest.Name, maxVolLength}, "failed")}
 	}
 	//TODO: check this
-	volume := resources.Volume{Name: createVolumeRequest.Name, CapacityBytes: createVolumeRequest.CapacityBytes, Metadata: createVolumeRequest.Metadata, Backend: createVolumeRequest.Backend, ID: createVolumeRequest.ID}
+	volume := resources.Volume{Name: createVolumeRequest.Name, CapacityBytes: createVolumeRequest.CapacityBytes, Metadata: createVolumeRequest.Metadata, Backend: createVolumeRequest.Backend, VolumeID: createVolumeRequest.ID}
 	// Provision the volume on SCBE service
 	volInfo := ScbeVolumeInfo{}
 	volInfo, err = s.scbeRestClient.CreateVolume(volNameToCreate, profile, size)
