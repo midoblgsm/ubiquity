@@ -222,8 +222,8 @@ var _ = Describe("block_device_utils_test", func() {
 			mpath := "mpath"
 			fakeExec.ExecuteReturns([]byte{}, exitErr2)
 			fs, err := bdUtils.CheckFs(mpath)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(fs).To(Equal(true))
+			Expect(err).To(HaveOccurred())
+			Expect(fs).To(Equal(false))
 			Expect(fakeExec.ExecuteCallCount()).To(Equal(1))
 			cmd, args := fakeExec.ExecuteArgsForCall(0)
 			Expect(cmd).To(Equal("sudo"))
