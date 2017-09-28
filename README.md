@@ -20,7 +20,7 @@ The code is provided as is, without warranty. Any issue will be handled on a bes
 
 ## Installing the Ubiquity service
 
-# Prerequisites
+### Prerequisites
   * Install [golang](https://golang.org/) (>=1.6).
   * Install [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
   * Configure go. GOPATH environment variable must be set correctly before starting the build process. Create a new directory and set it as GOPATH.
@@ -44,7 +44,7 @@ After that start the server:
 ./bin/ubiquity
 ```
 
-# Running unit tests for ubiquity-csi
+### Running unit tests for ubiquity-csi
 
 Install these go packages to test Ubiquity:
 ```bash
@@ -60,33 +60,33 @@ Run the tests:
 ```
 
 
-### 3. Configuring the Ubiquity service for storage other then localhost
+### Configuring the Ubiquity service for storage other then localhost
 Before running the Ubiquity service, you must create and configure the `/etc/ubiquity/ubiquity-server.conf` file, according to your storage system type.
 Follow the configuration procedures detailed in the [Available Storage Systems](supportedStorage.md) section.
 
 
-### 4. Running the Ubiquity service
+###  Running the Ubiquity service
   * Run the service.
 ```bash
 ./bin/ubiquity
 ```
 
 
-### 5. Installing Ubiquity plugins for CSI
+### Installing Ubiquity plugins for CSI
 To use the active Ubiquity service, install Ubiquity CSI plugin.
   * [Ubiquity CSI plugin](https://github.com/midoblgsm/ubiquity-csi)
 
 
-## Contribution
+### Contribution
 To contribute, follow the guidelines in [Contribution guide](contribution-guide.md)
 
 
-## Troubleshooting
+### Troubleshooting
 * Review the Ubiquity logs for any issues:
     * [logPath]/ubiquity.log   ([logPath] configured in the ubiquity-server.conf)
     * /var/log/messages        
 
-## Support
+### Support
 For any questions, suggestions, or issues, use github.
 
 
