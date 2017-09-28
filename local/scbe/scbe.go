@@ -166,7 +166,7 @@ func (s *scbeLocalClient) CreateVolume(createVolumeRequest resources.CreateVolum
 	}
 
 	// validate size option given
-	sizeStr, ok := createVolumeRequest.Opts[OptionNameForVolumeSize]
+	sizeStr, ok := createVolumeRequest.Metadata[OptionNameForVolumeSize]
 	if !ok {
 		sizeStr = s.config.DefaultVolumeSize
 		s.logger.Debug("No size given to create volume, so using the default_size",
@@ -174,20 +174,20 @@ func (s *scbeLocalClient) CreateVolume(createVolumeRequest resources.CreateVolum
 	}
 
 	// validate size is a number
-	size, err := strconv.Atoi(sizeStr.(string))
+	size, err := strconv.Atoi(sizeStr)
 	if err != nil {
 		return resources.CreateVolumeResponse{Error: s.logger.ErrorRet(&provisionParamIsNotNumberError{createVolumeRequest.Name, OptionNameForVolumeSize}, "failed")}
 	}
 
 	// validate fstype option given
-	fstypeInt, ok := createVolumeRequest.Opts[resources.OptionNameForVolumeFsType]
+	fstypeInt, ok := createVolumeRequest.Metadata[resources.OptionNameForVolumeFsType]
 	var fstype string
 	if !ok {
 		fstype = s.config.DefaultFilesystemType
 		s.logger.Debug("No default file system type given to create a volume, so using the default_fstype",
 			logs.Args{{"volume", createVolumeRequest.Name}, {"default_fstype", fstype}})
 	} else {
-		fstype = fstypeInt.(string)
+		fstype = fstypeInt
 	}
 	if !utils.StringInSlice(fstype, SupportedFSTypes) {
 		return resources.CreateVolumeResponse{Error: s.logger.ErrorRet(
@@ -196,8 +196,8 @@ func (s *scbeLocalClient) CreateVolume(createVolumeRequest resources.CreateVolum
 
 	// Get the profile option
 	profile := s.config.DefaultService
-	if createVolumeRequest.Opts[OptionNameForServiceName] != "" && createVolumeRequest.Opts[OptionNameForServiceName] != nil {
-		profile = createVolumeRequest.Opts[OptionNameForServiceName].(string)
+	if createVolumeRequest.Metadata[OptionNameForServiceName] != "" && createVolumeRequest.Metadata[OptionNameForServiceName] != "" {
+		profile = createVolumeRequest.Metadata[OptionNameForServiceName]
 	}
 
 	// Generate the designated volume name by template
@@ -211,7 +211,7 @@ func (s *scbeLocalClient) CreateVolume(createVolumeRequest resources.CreateVolum
 		return resources.CreateVolumeResponse{Error: s.logger.ErrorRet(&VolumeNameExceededMaxLengthError{createVolumeRequest.Name, maxVolLength}, "failed")}
 	}
 	//TODO: check this
-	volume := resources.Volume{Name: createVolumeRequest.Name, CapacityBytes: createVolumeRequest.CapacityBytes, Metadata: createVolumeRequest.Metadata, Backend: createVolumeRequest.Backend, VolumeID: createVolumeRequest.ID}
+	volume := resources.Volume{Name: createVolumeRequest.Name, CapacityBytes: createVolumeRequest.CapacityBytes, Metadata: createVolumeRequest.Metadata, Backend: createVolumeRequest.Backend}
 	// Provision the volume on SCBE service
 	volInfo := ScbeVolumeInfo{}
 	volInfo, err = s.scbeRestClient.CreateVolume(volNameToCreate, profile, size)

@@ -33,7 +33,7 @@ var _ = Describe("spectrum_mmcli", func() {
 		spectrumMMCLI connectors.SpectrumScaleConnector
 		logger        *log.Logger
 		fakeExec      *fakes.FakeExecutor
-		opts          map[string]interface{}
+		opts          map[string]string
 		err           error
 		fileset       string
 		filesystem    string

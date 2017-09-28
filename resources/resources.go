@@ -18,7 +18,6 @@ package resources
 
 import (
 	"github.com/jinzhu/gorm"
-	"github.com/midoblgsm/ubiquity/csi"
 )
 
 const (
@@ -160,10 +159,8 @@ type ActivateRequest struct {
 type CreateVolumeRequest struct {
 	Name          string
 	Backend       string
-	ID            csi.VolumeID
 	CapacityBytes uint64
-	Metadata      csi.VolumeMetadata
-	Opts          map[string]interface{}
+	Metadata      map[string]string
 }
 
 type RemoveVolumeRequest struct {
@@ -265,9 +262,8 @@ type DockerGetResponse struct {
 type Volume struct {
 	gorm.Model
 	Name          string
-	VolumeID      csi.VolumeID
 	CapacityBytes uint64
-	Metadata      csi.VolumeMetadata
+	Metadata      map[string]string
 	Backend       string
 	Mountpoint    string
 }

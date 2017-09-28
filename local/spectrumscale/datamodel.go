@@ -33,9 +33,9 @@ type SpectrumDataModel interface {
 	SetClusterId(string)
 	GetClusterId() string
 	DeleteVolume(name string) error
-	InsertFilesetVolume(fileset, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error
-	InsertLightweightVolume(fileset, directory, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error
-	InsertFilesetQuotaVolume(fileset, quota, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error
+	InsertFilesetVolume(fileset, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error
+	InsertLightweightVolume(fileset, directory, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error
+	InsertFilesetQuotaVolume(fileset, quota, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error
 	GetVolume(name string) (SpectrumScaleVolume, bool, error)
 	ListVolumes() ([]resources.Volume, error)
 	UpdateVolumeMountpoint(name string, mountpoint string) error
@@ -118,7 +118,7 @@ func (d *spectrumDataModel) DeleteVolume(name string) error {
 	return nil
 }
 
-func (d *spectrumDataModel) InsertFilesetVolume(fileset, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error {
+func (d *spectrumDataModel) InsertFilesetVolume(fileset, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error {
 	d.log.Println("SpectrumDataModel: InsertFilesetVolume start")
 	defer d.log.Println("SpectrumDataModel: InsertFilesetVolume end")
 
@@ -130,7 +130,7 @@ func (d *spectrumDataModel) InsertFilesetVolume(fileset, volumeName string, file
 	return d.insertVolume(volume)
 }
 
-func (d *spectrumDataModel) InsertLightweightVolume(fileset, directory, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error {
+func (d *spectrumDataModel) InsertLightweightVolume(fileset, directory, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error {
 	d.log.Println("SpectrumDataModel: InsertLightweightVolume start")
 	defer d.log.Println("SpectrumDataModel: InsertLightweightVolume end")
 
@@ -142,7 +142,7 @@ func (d *spectrumDataModel) InsertLightweightVolume(fileset, directory, volumeNa
 	return d.insertVolume(volume)
 }
 
-func (d *spectrumDataModel) InsertFilesetQuotaVolume(fileset, quota, volumeName string, filesystem string, isPreexisting bool, opts map[string]interface{}) error {
+func (d *spectrumDataModel) InsertFilesetQuotaVolume(fileset, quota, volumeName string, filesystem string, isPreexisting bool, opts map[string]string) error {
 	d.log.Println("SpectrumDataModel: InsertFilesetQuotaVolume start")
 	defer d.log.Println("SpectrumDataModel: InsertFilesetQuotaVolume end")
 
@@ -223,15 +223,15 @@ func (d *spectrumDataModel) UpdateVolumeMountpoint(name string, mountpoint strin
 	return nil
 }
 
-func addPermissionsForVolume(volume *SpectrumScaleVolume, opts map[string]interface{}) {
+func addPermissionsForVolume(volume *SpectrumScaleVolume, opts map[string]string) {
 
 	if len(opts) > 0 {
 		uid, uidSpecified := opts[UserSpecifiedUID]
 		gid, gidSpecified := opts[UserSpecifiedGID]
 
 		if uidSpecified && gidSpecified {
-			volume.UID = uid.(string)
-			volume.GID = gid.(string)
+			volume.UID = uid
+			volume.GID = gid
 
 		}
 	}

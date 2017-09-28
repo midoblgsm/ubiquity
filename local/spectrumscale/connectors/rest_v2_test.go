@@ -35,7 +35,7 @@ var _ = Describe("spectrumRestV2", func() {
 		logger         *log.Logger
 		fakeurl        string
 		restConfig     resources.RestConfig
-		opts           map[string]interface{}
+		opts           map[string]string
 		err            error
 		fileset        string
 		filesystem     string
@@ -313,7 +313,7 @@ var _ = Describe("spectrumRestV2", func() {
 			createFilesetResp.Status.Code = 202
 			createFilesetResp.Jobs[0].Status = "COMPLETED"
 			marshalledResponse, err := json.Marshal(createFilesetResp)
-			opts = make(map[string]interface{})
+			opts = make(map[string]string)
 			opts["fileset-type"] = "independent"
 			opts["inode-limit"] = "100"
 			Expect(err).ToNot(HaveOccurred())

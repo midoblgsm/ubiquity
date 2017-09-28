@@ -249,30 +249,30 @@ var _ = Describe("scbeLocalClient", func() {
 	Context(".CreateVolume", func() {
 		It("should fail create volume if error to get vol from DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, fakeErr)
-			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: nil}
+			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Metadata: nil}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			Expect(createVolumeResponse.Error).To(MatchError(fakeErr))
 		})
 		It("should fail create volume if volume already exist in DB", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, true, nil)
-			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: nil}
+			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Metadata: nil}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 		})
 		It("should fail create volume if vol size is not number", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "aaa"
-			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 		})
 		It("should fail create volume if vol size is not number", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[resources.OptionNameForVolumeFsType] = "bad-fs-type"
-			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: "fakevol", Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			_, ok := createVolumeResponse.Error.(*scbe.FsTypeNotSupportedError)
@@ -281,11 +281,11 @@ var _ = Describe("scbeLocalClient", func() {
 
 		It("should fail create volume if vol len exeeded", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 			maxVolNameCapable := scbe.MaxVolumeNameLength - (len(fakeConfig.UbiquityInstanceName) + 3)
 			volname := strings.Repeat("x", maxVolNameCapable+1)
-			req := resources.CreateVolumeRequest{Name: volname, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volname, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			_, ok := createVolumeResponse.Error.(*scbe.VolumeNameExceededMaxLengthError)
@@ -296,12 +296,12 @@ var _ = Describe("scbeLocalClient", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{}, fmt.Errorf("error"))
 
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 			maxVolNameCapable := scbe.MaxVolumeNameLength - (len(fakeConfig.UbiquityInstanceName) + 3)
 
 			volName := strings.Repeat("x", maxVolNameCapable)
-			req := resources.CreateVolumeRequest{Name: volName, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volName, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			_, ok := createVolumeResponse.Error.(*scbe.VolumeNameExceededMaxLengthError)
@@ -313,11 +313,11 @@ var _ = Describe("scbeLocalClient", func() {
 		It("should fail create volume if vol creation failed with err", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{}, fmt.Errorf("error"))
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
@@ -331,12 +331,12 @@ var _ = Describe("scbeLocalClient", func() {
 		It("should fail create volume if vol creation failed with err", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{}, fmt.Errorf("error"))
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 			opts[scbe.OptionNameForServiceName] = "gold"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
@@ -353,12 +353,12 @@ var _ = Describe("scbeLocalClient", func() {
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{
 				Name: "v1", Wwn: "wwn1", Profile: "gold"}, nil)
 			fakeScbeDataModel.InsertVolumeReturns(fmt.Errorf("error"))
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 			opts[scbe.OptionNameForServiceName] = "gold"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).To(HaveOccurred())
 			Expect(createVolumeResponse.Error.Error()).To(Equal("error"))
@@ -374,12 +374,12 @@ var _ = Describe("scbeLocalClient", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{Name: "v1", Wwn: "wwn1", Profile: "gold"}, nil)
 			fakeScbeDataModel.InsertVolumeReturns(nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[scbe.OptionNameForVolumeSize] = "100"
 			opts[scbe.OptionNameForServiceName] = "gold"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
@@ -393,12 +393,12 @@ var _ = Describe("scbeLocalClient", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{Name: "v1", Wwn: "wwn1", Profile: "gold"}, nil)
 			fakeScbeDataModel.InsertVolumeReturns(nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			//opts[scbe.OptionNameForVolumeSize] = "10"
 			opts[scbe.OptionNameForServiceName] = "gold"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))
@@ -412,12 +412,12 @@ var _ = Describe("scbeLocalClient", func() {
 			fakeScbeDataModel.GetVolumeReturns(scbe.ScbeVolume{}, false, nil)
 			fakeScbeRestClient.CreateVolumeReturns(scbe.ScbeVolumeInfo{Name: "v1", Wwn: "wwn1", Profile: "gold"}, nil)
 			fakeScbeDataModel.InsertVolumeReturns(nil)
-			opts := make(map[string]interface{})
+			opts := make(map[string]string)
 			opts[resources.OptionNameForVolumeFsType] = "xfs"
 			opts[scbe.OptionNameForServiceName] = "gold"
 
 			volFake := "fakevol"
-			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Opts: opts}
+			req := resources.CreateVolumeRequest{Name: volFake, Backend: resources.SCBE, Metadata: opts}
 			createVolumeResponse := client.CreateVolume(req)
 			Expect(createVolumeResponse.Error).NotTo(HaveOccurred())
 			Expect(fakeScbeDataModel.InsertVolumeCallCount()).To(Equal(1))

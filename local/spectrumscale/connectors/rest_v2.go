@@ -255,7 +255,7 @@ func (s *spectrumRestV2) GetFilesystemMountpoint(filesystemName string) (string,
 	}
 }
 
-func (s *spectrumRestV2) CreateFileset(filesystemName string, filesetName string, opts map[string]interface{}) error {
+func (s *spectrumRestV2) CreateFileset(filesystemName string, filesetName string, opts map[string]string) error {
 
 	s.logger.Println("spectrumRestConnector: CreateFileset")
 	defer s.logger.Println("spectrumRestConnector: CreateFileset end")
@@ -266,11 +266,11 @@ func (s *spectrumRestV2) CreateFileset(filesystemName string, filesetName string
 
 	filesetType, filesetTypeSpecified := opts[UserSpecifiedFilesetType]
 	inodeLimit, inodeLimitSpecified := opts[UserSpecifiedInodeLimit]
-	if filesetTypeSpecified && filesetType.(string) == "independent" {
+	if filesetTypeSpecified && filesetType == "independent" {
 		filesetreq.InodeSpace = "new"
 		if inodeLimitSpecified {
-			filesetreq.MaxNumInodes = inodeLimit.(string)
-			filesetreq.AllocInodes = inodeLimit.(string)
+			filesetreq.MaxNumInodes = inodeLimit
+			filesetreq.AllocInodes = inodeLimit
 		}
 	} else {
 		filesetreq.InodeSpace = "root"

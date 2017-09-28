@@ -150,7 +150,7 @@ var _ = Describe("local-client", func() {
 
 	Context(".CreateVolume", func() {
 		var (
-			opts map[string]interface{}
+			opts map[string]string
 		)
 		BeforeEach(func() {
 			client, err = spectrumscale.NewSpectrumLocalClientWithConnectors(logger, fakeSpectrumScaleConnector, fakeExec, fakeConfig, fakeSpectrumDataModel)
@@ -162,7 +162,7 @@ var _ = Describe("local-client", func() {
 			activateResponse := client.Activate(activateRequest)
 			Expect(activateResponse.Error).ToNot(HaveOccurred())
 
-			createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-volume", Opts: opts}
+			createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-volume", Metadata: opts}
 		})
 
 		It("should fail when dbClient volumeExists errors", func() {
@@ -185,9 +185,9 @@ var _ = Describe("local-client", func() {
 
 		Context(".FilesetVolume", func() {
 			BeforeEach(func() {
-				opts = make(map[string]interface{})
+				opts = make(map[string]string)
 				opts[""] = ""
-				createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Opts: opts}
+				createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Metadata: opts}
 			})
 
 			It("should fail when spectrum client fails to create fileset", func() {
@@ -224,7 +224,7 @@ var _ = Describe("local-client", func() {
 
 		Context(".FilesetVolume", func() {
 			BeforeEach(func() {
-				opts = make(map[string]interface{})
+				opts = make(map[string]string)
 				opts["fileset"] = "fake-fileset"
 				opts["type"] = "fileset"
 				opts["filesystem"] = "fake-filesystem"
@@ -232,7 +232,7 @@ var _ = Describe("local-client", func() {
 			})
 			Context(".WithNoQuota", func() {
 				BeforeEach(func() {
-					createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Opts: opts}
+					createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Metadata: opts}
 				})
 
 				It("should fail when spectrum client fails to list fileset quota", func() {
@@ -265,7 +265,7 @@ var _ = Describe("local-client", func() {
 			Context(".WithQuota", func() {
 				BeforeEach(func() {
 					opts["quota"] = "1Gi"
-					createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Opts: opts}
+					createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-fileset", Metadata: opts}
 				})
 				It("should fail when spectrum client fails to list fileset quota", func() {
 					fakeSpectrumScaleConnector.ListFilesetQuotaReturns("", fmt.Errorf("error in list quota"))
@@ -303,12 +303,12 @@ var _ = Describe("local-client", func() {
 
 		Context(".LightWeightVolume", func() {
 			BeforeEach(func() {
-				opts = make(map[string]interface{})
+				opts = make(map[string]string)
 				opts["fileset"] = "fake-fileset"
 				opts["filesystem"] = "fake-filesystem"
 				opts["type"] = "lightweight"
 
-				createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-lightweight", Opts: opts}
+				createVolumeRequest = resources.CreateVolumeRequest{Name: "fake-lightweight", Metadata: opts}
 			})
 			It("should fail when spectrum client IsfilesetLinked errors", func() {
 				fakeSpectrumScaleConnector.IsFilesetLinkedReturns(false, fmt.Errorf("error in checking fileset linked"))

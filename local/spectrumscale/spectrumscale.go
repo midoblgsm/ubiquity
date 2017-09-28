@@ -160,21 +160,21 @@ func (s *spectrumLocalClient) CreateVolume(createVolumeRequest resources.CreateV
 		return resources.CreateVolumeResponse{Error: fmt.Errorf("Volume already exists")}
 	}
 
-	s.logger.Printf("Opts for create: %#v\n", createVolumeRequest.Opts)
+	s.logger.Printf("Opts for create: %#v\n", createVolumeRequest.Metadata)
 	volume := resources.Volume{Name: createVolumeRequest.Name, Backend: createVolumeRequest.Backend, Metadata: createVolumeRequest.Metadata, CapacityBytes: createVolumeRequest.CapacityBytes}
 
-	if len(createVolumeRequest.Opts) == 0 {
+	if len(createVolumeRequest.Metadata) == 0 {
 		//fileset
-		return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetVolume(s.config.DefaultFilesystemName, createVolumeRequest.Name, createVolumeRequest.Opts)}
+		return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetVolume(s.config.DefaultFilesystemName, createVolumeRequest.Name, createVolumeRequest.Metadata)}
 	}
 	s.logger.Printf("Trying to determine type for request\n")
-	userSpecifiedType, err := determineTypeFromRequest(s.logger, createVolumeRequest.Opts)
+	userSpecifiedType, err := determineTypeFromRequest(s.logger, createVolumeRequest.Metadata)
 	if err != nil {
 		s.logger.Printf("Error determining type: %s\n", err.Error())
 		return resources.CreateVolumeResponse{Error: err}
 	}
 	s.logger.Printf("Volume type requested: %s", userSpecifiedType)
-	isExistingVolume, filesystem, existingFileset, existingLightWeightDir, err := s.validateAndParseParams(s.logger, createVolumeRequest.Opts)
+	isExistingVolume, filesystem, existingFileset, existingLightWeightDir, err := s.validateAndParseParams(s.logger, createVolumeRequest.Metadata)
 	if err != nil {
 		s.logger.Printf("Error in validate params: %s\n", err.Error())
 		return resources.CreateVolumeResponse{Error: err}
@@ -183,26 +183,26 @@ func (s *spectrumLocalClient) CreateVolume(createVolumeRequest resources.CreateV
 	s.logger.Printf("Params for create: %s,%s,%s,%s\n", isExistingVolume, filesystem, existingFileset, existingLightWeightDir)
 
 	if isExistingVolume && userSpecifiedType == TypeFileset {
-		quota, quotaSpecified := createVolumeRequest.Opts[Quota]
+		quota, quotaSpecified := createVolumeRequest.Metadata[Quota]
 		if quotaSpecified {
-			return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingFilesetQuota(filesystem, createVolumeRequest.Name, existingFileset, quota.(string), createVolumeRequest.Opts)}
+			return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingFilesetQuota(filesystem, createVolumeRequest.Name, existingFileset, quota, createVolumeRequest.Metadata)}
 		}
-		return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingFileset(filesystem, createVolumeRequest.Name, existingFileset, createVolumeRequest.Opts)}
+		return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingFileset(filesystem, createVolumeRequest.Name, existingFileset, createVolumeRequest.Metadata)}
 	}
 
 	if isExistingVolume && userSpecifiedType == TypeLightweight {
-		return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingDirectory(filesystem, createVolumeRequest.Name, existingFileset, existingLightWeightDir, createVolumeRequest.Opts)}
+		return resources.CreateVolumeResponse{Volume: volume, Error: s.updateDBWithExistingDirectory(filesystem, createVolumeRequest.Name, existingFileset, existingLightWeightDir, createVolumeRequest.Metadata)}
 	}
 
 	if userSpecifiedType == TypeFileset {
-		quota, quotaSpecified := createVolumeRequest.Opts[Quota]
+		quota, quotaSpecified := createVolumeRequest.Metadata[Quota]
 		if quotaSpecified {
-			return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetQuotaVolume(filesystem, createVolumeRequest.Name, quota.(string), createVolumeRequest.Opts)}
+			return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetQuotaVolume(filesystem, createVolumeRequest.Name, quota, createVolumeRequest.Metadata)}
 		}
-		return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetVolume(filesystem, createVolumeRequest.Name, createVolumeRequest.Opts)}
+		return resources.CreateVolumeResponse{Volume: volume, Error: s.createFilesetVolume(filesystem, createVolumeRequest.Name, createVolumeRequest.Metadata)}
 	}
 	if userSpecifiedType == TypeLightweight {
-		return resources.CreateVolumeResponse{Volume: volume, Error: s.createLightweightVolume(filesystem, createVolumeRequest.Name, existingFileset, createVolumeRequest.Opts)}
+		return resources.CreateVolumeResponse{Volume: volume, Error: s.createLightweightVolume(filesystem, createVolumeRequest.Name, existingFileset, createVolumeRequest.Metadata)}
 	}
 	return resources.CreateVolumeResponse{Error: fmt.Errorf("Internal error")}
 }
@@ -446,7 +446,7 @@ func (s *spectrumLocalClient) ListVolumes(listVolumesRequest resources.ListVolum
 	return resources.ListVolumesResponse{Volumes: volumesInDb}
 }
 
-func (s *spectrumLocalClient) createFilesetVolume(filesystem, name string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) createFilesetVolume(filesystem, name string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient: createFilesetVolume start")
 	defer s.logger.Println("spectrumLocalClient: createFilesetVolume end")
 
@@ -470,7 +470,7 @@ func (s *spectrumLocalClient) createFilesetVolume(filesystem, name string, opts 
 	return nil
 }
 
-func (s *spectrumLocalClient) createFilesetQuotaVolume(filesystem, name, quota string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) createFilesetQuotaVolume(filesystem, name, quota string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient: createFilesetQuotaVolume start")
 	defer s.logger.Println("spectrumLocalClient: createFilesetQuotaVolume end")
 
@@ -502,7 +502,7 @@ func (s *spectrumLocalClient) createFilesetQuotaVolume(filesystem, name, quota s
 	return nil
 }
 
-func (s *spectrumLocalClient) createLightweightVolume(filesystem, name, fileset string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) createLightweightVolume(filesystem, name, fileset string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient: createLightweightVolume start")
 	defer s.logger.Println("spectrumLocalClient: createLightweightVolume end")
 
@@ -570,7 +570,7 @@ func generateFilesetName(name string) string {
 
 //TODO move updates to DB file
 
-func (s *spectrumLocalClient) updateDBWithExistingFileset(filesystem, name, userSpecifiedFileset string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) updateDBWithExistingFileset(filesystem, name, userSpecifiedFileset string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient:  updateDBWithExistingFileset start")
 	defer s.logger.Println("spectrumLocalClient: updateDBWithExistingFileset end")
 	s.logger.Printf("User specified fileset: %s\n", userSpecifiedFileset)
@@ -607,7 +607,7 @@ func (s *spectrumLocalClient) checkIfVolumeExistsInDB(name, userSpecifiedFileset
 	return nil
 }
 
-func (s *spectrumLocalClient) updateDBWithExistingFilesetQuota(filesystem, name, userSpecifiedFileset, quota string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) updateDBWithExistingFilesetQuota(filesystem, name, userSpecifiedFileset, quota string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient:  updateDBWithExistingFilesetQuota start")
 	defer s.logger.Println("spectrumLocalClient: updateDBWithExistingFilesetQuota end")
 
@@ -653,7 +653,7 @@ func (s *spectrumLocalClient) updateDBWithExistingFilesetQuota(filesystem, name,
 	return nil
 }
 
-func (s *spectrumLocalClient) updateDBWithExistingDirectory(filesystem, name, userSpecifiedFileset, userSpecifiedDirectory string, opts map[string]interface{}) error {
+func (s *spectrumLocalClient) updateDBWithExistingDirectory(filesystem, name, userSpecifiedFileset, userSpecifiedDirectory string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient:  updateDBWithExistingDirectory start")
 	defer s.logger.Println("spectrumLocalClient: updateDBWithExistingDirectory end")
 	s.logger.Printf("User specified fileset: %s, User specified directory: %s\n", userSpecifiedFileset, userSpecifiedDirectory)
@@ -698,7 +698,7 @@ func (s *spectrumLocalClient) updateDBWithExistingDirectory(filesystem, name, us
 	return nil
 }
 
-func determineTypeFromRequest(logger *log.Logger, opts map[string]interface{}) (string, error) {
+func determineTypeFromRequest(logger *log.Logger, opts map[string]string) (string, error) {
 	logger.Print("determineTypeFromRequest start\n")
 	defer logger.Printf("determineTypeFromRequest end\n")
 	userSpecifiedType, exists := opts[Type]
@@ -710,14 +710,14 @@ func determineTypeFromRequest(logger *log.Logger, opts map[string]interface{}) (
 		return TypeFileset, nil
 	}
 
-	if userSpecifiedType.(string) != TypeFileset && userSpecifiedType.(string) != TypeLightweight {
-		return "", fmt.Errorf("Unknown 'type' = %s specified", userSpecifiedType.(string))
+	if userSpecifiedType != TypeFileset && userSpecifiedType != TypeLightweight {
+		return "", fmt.Errorf("Unknown 'type' = %s specified", userSpecifiedType)
 	}
 
-	return userSpecifiedType.(string), nil
+	return userSpecifiedType, nil
 }
 
-func (s *spectrumLocalClient) validateAndParseParams(logger *log.Logger, opts map[string]interface{}) (bool, string, string, string, error) {
+func (s *spectrumLocalClient) validateAndParseParams(logger *log.Logger, opts map[string]string) (bool, string, string, string, error) {
 	logger.Println("validateAndParseParams start")
 	defer logger.Println("validateAndParseParams end")
 	existingFileset, existingFilesetSpecified := opts[TypeFileset]
@@ -744,23 +744,23 @@ func (s *spectrumLocalClient) validateAndParseParams(logger *log.Logger, opts ma
 	if (userSpecifiedType == TypeFileset && existingFilesetSpecified) || (userSpecifiedType == TypeLightweight && existingLightWeightDirSpecified) {
 		if filesystemSpecified == false {
 			logger.Println("'filesystem' is a required opt for using existing volumes")
-			return true, filesystem.(string), existingFileset.(string), existingLightWeightDir.(string), fmt.Errorf("'filesystem' is a required opt for using existing volumes")
+			return true, filesystem, existingFileset, existingLightWeightDir, fmt.Errorf("'filesystem' is a required opt for using existing volumes")
 		}
 		if existingLightWeightDirSpecified && !existingFilesetSpecified {
 			logger.Println("'fileset' is a required opt for using existing lightweight volumes")
-			return true, filesystem.(string), existingFileset.(string), existingLightWeightDir.(string), fmt.Errorf("'fileset' is a required opt for using existing lightweight volumes")
+			return true, filesystem, existingFileset, existingLightWeightDir, fmt.Errorf("'fileset' is a required opt for using existing lightweight volumes")
 		}
-		if userSpecifiedType == TypeLightweight && existingLightWeightDir != nil {
+		if userSpecifiedType == TypeLightweight && existingLightWeightDir != "" {
 			_, quotaSpecified := opts[Quota]
 			if quotaSpecified {
 				logger.Println("'quota' is not supported for lightweight volumes")
 				return true, "", "", "", fmt.Errorf("'quota' is not supported for lightweight volumes")
 			}
 			logger.Println("Valid: existing LTWT")
-			return true, filesystem.(string), existingFileset.(string), existingLightWeightDir.(string), nil
+			return true, filesystem, existingFileset, existingLightWeightDir, nil
 		} else {
 			logger.Println("Valid: existing FILESET")
-			return true, filesystem.(string), existingFileset.(string), "", nil
+			return true, filesystem, existingFileset, "", nil
 		}
 
 	} else if userSpecifiedType == TypeLightweight {
@@ -773,14 +773,14 @@ func (s *spectrumLocalClient) validateAndParseParams(logger *log.Logger, opts ma
 				return false, "", "", "", fmt.Errorf("'quota' is not supported for lightweight volumes")
 			}
 
-			return false, filesystem.(string), existingFileset.(string), "", nil
+			return false, filesystem, existingFileset, "", nil
 		}
 		return false, "", "", "", fmt.Errorf("'filesystem' and 'fileset' are required opts for using lightweight volumes")
 	} else if filesystemSpecified == false {
 		return false, s.config.DefaultFilesystemName, "", "", nil
 
 	} else {
-		return false, filesystem.(string), "", "", nil
+		return false, filesystem, "", "", nil
 	}
 
 }

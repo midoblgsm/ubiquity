@@ -63,7 +63,7 @@ func (s *remoteClient) CreateVolume(createVolumeRequest resources.CreateVolumeRe
 	createRemoteURL := utils.FormatURL(s.storageApiURL, "volumes")
 
 	if reflect.DeepEqual(s.config.SpectrumNfsRemoteConfig, resources.SpectrumNfsRemoteConfig{}) == false {
-		createVolumeRequest.Opts["nfsClientConfig"] = s.config.SpectrumNfsRemoteConfig.ClientConfig
+		createVolumeRequest.Metadata["nfsClientConfig"] = s.config.SpectrumNfsRemoteConfig.ClientConfig
 	}
 
 	response, err := utils.HttpExecute(s.httpClient, s.logger, "POST", createRemoteURL, createVolumeRequest)

@@ -136,7 +136,7 @@ func (s *spectrum_rest) GetFilesystemMountpoint(filesystemName string) (string, 
 	return getFilesystemResponse.FileSystems[0].DefaultMountPoint, nil
 }
 
-func (s *spectrum_rest) CreateFileset(filesystemName string, filesetName string, opts map[string]interface{}) error {
+func (s *spectrum_rest) CreateFileset(filesystemName string, filesetName string, opts map[string]string) error {
 	filesetConfig := FilesetConfig{}
 	filesetConfig.Comment = "fileset for container volume"
 	filesetConfig.FilesetName = filesetName
@@ -145,11 +145,11 @@ func (s *spectrum_rest) CreateFileset(filesystemName string, filesetName string,
 	filesetType, filesetTypeSpecified := opts[UserSpecifiedFilesetType]
 	inodeLimit, inodeLimitSpecified := opts[UserSpecifiedInodeLimit]
 
-	if filesetTypeSpecified && filesetType.(string) == "independent" {
+	if filesetTypeSpecified && filesetType == "independent" {
 		filesetConfig.INodeSpace = "new"
 
 		if inodeLimitSpecified {
-			filesetConfig.MaxNumInodes = inodeLimit.(string)
+			filesetConfig.MaxNumInodes = inodeLimit
 		}
 	}
 

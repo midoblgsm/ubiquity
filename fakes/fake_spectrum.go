@@ -68,12 +68,12 @@ type FakeSpectrumScaleConnector struct {
 		result1 string
 		result2 error
 	}
-	CreateFilesetStub        func(filesystemName string, filesetName string, opts map[string]interface{}) error
+	CreateFilesetStub        func(filesystemName string, filesetName string, opts map[string]string) error
 	createFilesetMutex       sync.RWMutex
 	createFilesetArgsForCall []struct {
 		filesystemName string
 		filesetName    string
-		opts           map[string]interface{}
+		opts           map[string]string
 	}
 	createFilesetReturns struct {
 		result1 error
@@ -448,13 +448,13 @@ func (fake *FakeSpectrumScaleConnector) GetFilesystemMountpointReturnsOnCall(i i
 	}{result1, result2}
 }
 
-func (fake *FakeSpectrumScaleConnector) CreateFileset(filesystemName string, filesetName string, opts map[string]interface{}) error {
+func (fake *FakeSpectrumScaleConnector) CreateFileset(filesystemName string, filesetName string, opts map[string]string) error {
 	fake.createFilesetMutex.Lock()
 	ret, specificReturn := fake.createFilesetReturnsOnCall[len(fake.createFilesetArgsForCall)]
 	fake.createFilesetArgsForCall = append(fake.createFilesetArgsForCall, struct {
 		filesystemName string
 		filesetName    string
-		opts           map[string]interface{}
+		opts           map[string]string
 	}{filesystemName, filesetName, opts})
 	fake.recordInvocation("CreateFileset", []interface{}{filesystemName, filesetName, opts})
 	fake.createFilesetMutex.Unlock()
@@ -473,7 +473,7 @@ func (fake *FakeSpectrumScaleConnector) CreateFilesetCallCount() int {
 	return len(fake.createFilesetArgsForCall)
 }
 
-func (fake *FakeSpectrumScaleConnector) CreateFilesetArgsForCall(i int) (string, string, map[string]interface{}) {
+func (fake *FakeSpectrumScaleConnector) CreateFilesetArgsForCall(i int) (string, string, map[string]string) {
 	fake.createFilesetMutex.RLock()
 	defer fake.createFilesetMutex.RUnlock()
 	return fake.createFilesetArgsForCall[i].filesystemName, fake.createFilesetArgsForCall[i].filesetName, fake.createFilesetArgsForCall[i].opts

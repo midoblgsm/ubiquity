@@ -205,7 +205,7 @@ func GetFilesystemMountpointInternal(logger *log.Logger, executor utils.Executor
 
 }
 
-func (s *spectrum_mmcli) CreateFileset(filesystemName string, filesetName string, opts map[string]interface{}) error {
+func (s *spectrum_mmcli) CreateFileset(filesystemName string, filesetName string, opts map[string]string) error {
 	s.logger.Println("spectrumLocalClient: createFileset start")
 	defer s.logger.Println("spectrumLocalClient: createFileset end")
 
@@ -218,11 +218,11 @@ func (s *spectrum_mmcli) CreateFileset(filesystemName string, filesetName string
 	filesetType, filesetTypeSpecified := opts[UserSpecifiedFilesetType]
 	inodeLimit, inodeLimitSpecified := opts[UserSpecifiedInodeLimit]
 
-	if filesetTypeSpecified && filesetType.(string) == "independent" {
+	if filesetTypeSpecified && filesetType == "independent" {
 		args = append(args, "--inode-space", "new")
 
 		if inodeLimitSpecified {
-			args = append(args, "--inode-limit", inodeLimit.(string))
+			args = append(args, "--inode-limit", inodeLimit)
 		}
 	}
 
