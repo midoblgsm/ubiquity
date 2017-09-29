@@ -56,7 +56,7 @@ go install github.com/onsi/gomega
 
 Run the tests:
 ```bash
-./scripts/run-unit-tests
+./scripts/run_units.sh
 ```
 
 
