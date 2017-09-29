@@ -33,7 +33,7 @@ export GOPATH=$HOME/workspace
 mkdir -p $GOPATH/src/github.com/midoblgsm
 cd $GOPATH/src/github.com/midoblgsm
 git clone git@github.com:midoblgsm/ubiquity.git
-cd ubiquity-csi
+cd ubiquity
 ./scripts/run_glide_up
 ./scripts/build
 ```

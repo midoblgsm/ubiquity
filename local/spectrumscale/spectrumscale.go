@@ -161,7 +161,8 @@ func (s *spectrumLocalClient) CreateVolume(createVolumeRequest resources.CreateV
 	}
 
 	s.logger.Printf("Opts for create: %#v\n", createVolumeRequest.Metadata)
-	volume := resources.Volume{Name: createVolumeRequest.Name, Backend: createVolumeRequest.Backend, Metadata: createVolumeRequest.Metadata, CapacityBytes: createVolumeRequest.CapacityBytes}
+	metadata := resources.VolumeMetadata{Values: createVolumeRequest.Metadata}
+	volume := resources.Volume{Name: createVolumeRequest.Name, Backend: createVolumeRequest.Backend, Metadata: metadata, CapacityBytes: createVolumeRequest.CapacityBytes}
 
 	if len(createVolumeRequest.Metadata) == 0 {
 		//fileset

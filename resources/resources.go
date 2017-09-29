@@ -263,11 +263,14 @@ type Volume struct {
 	gorm.Model
 	Name          string
 	CapacityBytes uint64
-	Metadata      map[string]string
+	Metadata      VolumeMetadata
 	Backend       string
 	Mountpoint    string
 }
 
+type VolumeMetadata struct {
+	Values map[string]string
+}
 type GetConfigResponse struct {
 	VolumeConfig map[string]interface{}
 	Err          string

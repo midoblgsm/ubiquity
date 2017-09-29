@@ -95,7 +95,8 @@ func (s *localhostLocalClient) CreateVolume(createVolumeRequest resources.Create
 	}
 
 	s.logger.Printf("Opts for create: %#v\n", createVolumeRequest.Metadata)
-	volume := resources.Volume{Name: createVolumeRequest.Name, Backend: createVolumeRequest.Backend, Metadata: createVolumeRequest.Metadata, CapacityBytes: createVolumeRequest.CapacityBytes}
+	metadata := resources.VolumeMetadata{Values: createVolumeRequest.Metadata}
+	volume := resources.Volume{Name: createVolumeRequest.Name, Backend: createVolumeRequest.Backend, Metadata: metadata, CapacityBytes: createVolumeRequest.CapacityBytes}
 	volumePath := path.Join(s.config.LocalhostPath, volume.Name)
 	err = os.MkdirAll(volumePath, 0777)
 	if err != nil {
